@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const InventoryApp());
@@ -164,7 +165,22 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                             ElevatedButton(
-                              onPressed: () {}, // TODO: Future Paste Logic
+                              onPressed: () async {
+                                // 1. Get data from the system clipboard
+                                  ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+                                  
+                                  // 2. If there is text there, update the controller
+                                  if (data != null && data.text != null) {
+                                    setState(() {
+                                      _linkController.text = data.text!;
+                                    });
+                                    
+                                    // Optional: Show a quick toast/snackbar so the user knows it worked
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text("Link Pasted!"), duration: Duration(seconds: 1)),
+                                    );
+                                  }
+                              }, // TODO: Future Paste Logic
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF333333),
                                 foregroundColor: Colors.white,
@@ -219,6 +235,107 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // --- ADD THIS METHOD BELOW _showAddItemSheet ---
+  void _viewItemDetails(InventoryItem item, int index) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF2F2F2), // Matching the Figma light grey
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with Title and Close
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(item.name, 
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 28),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Image Placeholder (Grey box from Figma)
+              Container(
+                height: 180,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.image_not_supported_outlined, size: 50, color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+
+              // Item Data Rows
+              _buildDetailRow("Location", item.location, Icons.location_on_outlined),
+              _buildDetailRow("Type", item.type, Icons.category_outlined),
+              
+              if (item.link != null && item.link!.isNotEmpty)
+                _buildDetailRow("Link", item.link!, Icons.link),
+
+              if (item.comment != null && item.comment!.isNotEmpty)
+                _buildDetailRow("Comment", item.comment!, Icons.notes),
+              
+              const Spacer(),
+              
+              // Delete Action
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() => _inventory.removeAt(index));
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                  label: const Text("Remove from Inventory", style: TextStyle(color: Colors.red, fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper function for the rows (place this right under _viewItemDetails)
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF59A638), size: 22), // Using the green from your Figma
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   void _saveItem() {
     setState(() {
       _inventory.add(InventoryItem(
@@ -277,29 +394,32 @@ class _HomePageState extends State<HomePage> {
                     itemCount: _inventory.length,
                     itemBuilder: (context, index) {
                       final item = _inventory[index];
-                      return Card(
-                        elevation: 0,
-                        color: item.type == "Disposable" ? Colors.green.shade50 : Colors.purple.shade50,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                              Text(item.location, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                                child: Text(item.type, style: const TextStyle(fontSize: 10)),
-                              )
-                            ],
+                      return InkWell( // <--- 1. Wrap with InkWell to make it clickable
+                        onTap: () => _viewItemDetails(item, index), // <--- 2. Call the pop-up function
+                        borderRadius: BorderRadius.circular(15),
+                        child: Card(
+                          elevation: 0,
+                          color: item.type == "Disposable" ? Colors.green.shade50 : Colors.purple.shade50,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                                Text(item.location, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                                  child: Text(item.type, style: const TextStyle(fontSize: 10)),
+                                )
+                              ],
+                            ),
                           ),
                         ),
                       );
-                    },
-                  ),
+                    },),
             ),
           ],
         ),
