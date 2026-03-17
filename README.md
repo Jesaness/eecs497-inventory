@@ -1,6 +1,12 @@
 # inventory_app
 
-A new Flutter project.
+EECS 497 MDE: Inventory Tracking App 
+
+Authors: Han Zhang, Saniya Kalamkar, Mia Lin, Grace Pang
+
+## Developing Tips
+Launch preview in chrome: 
+`flutter run -d chrome`
 
 ## Getting Started
 

@@ -252,7 +252,7 @@ class _HomePageState extends State<HomePage> {
                             onPressed: () => Navigator.pop(context),
                             icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 30),
                           ),
-                          const Text("New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          const Text("Add New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                           const SizedBox(width: 48),
                         ],
                       ),
@@ -262,17 +262,17 @@ class _HomePageState extends State<HomePage> {
                       _buildTextField(_nameController, "e.g. Hiking Boots"),
 
                       _buildSectionLabel("Location *"),
-                      _buildTextField(_locationController, "e.g. Closet Shelf"),
+                      _buildTextField(_locationController, "e.g. Closet Shelf"), // TODO: make it dropdown with last option being "Add New Location" that opens a dialog to add to a list of locations
 
                       // Type & Quantity in one Row
-                      _buildSectionLabel("Type & Quantity *"),
-                      Row(
+                      _buildSectionLabel("Type *"),
+                      Row(  // TODO: either case requires qty input
                         children: [
                           Checkbox(
                             value: _selectedType == "Reusable",
                             onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Reusable"); },
                           ),
-                          const Text("Reusable"),
+                          const Text("Reusable"), // TODO: means checkout function will be enabled for this item
                           const SizedBox(width: 8),
                           Checkbox(
                             value: _selectedType == "Disposable",
@@ -291,7 +291,7 @@ class _HomePageState extends State<HomePage> {
                       // Image Placeholder
                       _buildSectionLabel("Item Image"),
                       InkWell(
-                        onTap: () {}, // Image picker logic
+                        onTap: () {}, //TODO Image picker logic
                         child: Container(
                           width: double.infinity,
                           height: 100,
