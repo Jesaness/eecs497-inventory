@@ -184,6 +184,105 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+void _showEditItemSheet(InventoryItem item, int index) {
+  // Pre-fill controllers with current item data
+  _nameController.text = item.name;
+  _locationController.text = item.location;
+  _selectedType = item.type;
+  _qtyController.text = item.quantity ?? "";
+  _linkController.text = item.link ?? "";
+  _commentController.text = item.comment ?? "";
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheetState) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+        ),
+        padding: EdgeInsets.only(
+          top: 20, left: 24, right: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Edit ${item.name}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              
+              _buildSectionLabel("Item Name *"),
+              _buildTextField(_nameController, "Name"),
+
+              _buildSectionLabel("Location *"),
+              _buildTextField(_locationController, "Location"),
+
+              _buildSectionLabel("Type & Quantity"),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _selectedType == "Reusable",
+                    onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Reusable"); },
+                  ),
+                  const Text("Reusable"),
+                  const SizedBox(width: 8),
+                  Checkbox(
+                    value: _selectedType == "Disposable",
+                    onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Disposable"); },
+                  ),
+                  const Text("Disposable"),
+                  if (_selectedType == "Disposable" || _selectedType == "Reusable") ...[
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildTextField(_qtyController, "Qty", isNum: true)),
+                  ]
+                ],
+              ),
+
+              _buildSectionLabel("Link & Comments"),
+              _buildTextField(_linkController, "URL Link"),
+              const SizedBox(height: 12),
+              _buildTextField(_commentController, "Notes...", maxLines: 3),
+
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity, height: 60,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cPrimary, foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      // Update the item in the list
+                      _inventory[index] = InventoryItem(
+                        name: _nameController.text,
+                        location: _locationController.text,
+                        type: _selectedType,
+                        quantity: _selectedType == "Disposable" ? _qtyController.text : null,
+                        link: _linkController.text,
+                        comment: _commentController.text,
+                        borrower: item.borrower, // Preserve the borrower status
+                      );
+                    });
+                    // Clear and close
+                    _nameController.clear();
+                    _locationController.clear();
+                    Navigator.pop(context); // Close Edit Sheet
+                  },
+                  child: const Text("Save Changes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
   // Small helper for the buttons
   Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
     width: double.infinity, height: 55,
@@ -279,7 +378,7 @@ class _HomePageState extends State<HomePage> {
                             onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Disposable"); },
                           ),
                           const Text("Disposable"),
-                          if (_selectedType == "Disposable") ...[
+                          if (_selectedType == "Disposable" || _selectedType == "Reusable") ...[
                             const SizedBox(width: 12),
                             Expanded(
                               child: _buildTextField(_qtyController, "Qty", isNum: true),
@@ -340,7 +439,7 @@ class _HomePageState extends State<HomePage> {
         name: _nameController.text,
         location: _locationController.text,
         type: _selectedType,
-        quantity: _selectedType == "Disposable" ? _qtyController.text : null,
+        quantity: _qtyController.text,
         link: _linkController.text,
         comment: _commentController.text,
       ));
@@ -380,84 +479,99 @@ class _HomePageState extends State<HomePage> {
                   ? const Center(child: Text("Empty. Let's add something!"))
                   : GridView.builder(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2, 
-                        crossAxisSpacing: 16, 
-                        mainAxisSpacing: 16, 
-                        childAspectRatio: 0.85,
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.85, // Adjust this if the card feels too squashed
                       ),
                       itemCount: _inventory.length,
                       itemBuilder: (context, index) {
                         final item = _inventory[index];
-                        // CHECK: Is the item currently borrowed?
                         final bool isBorrowed = item.borrower != null;
 
-                        return InkWell(
-                          // ACTION: Open the details popup created in Step 2
-                          onTap: () => _viewItemDetails(item, index),
-                          borderRadius: BorderRadius.circular(28),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(28),
-                              // CHANGE: Add a Sunset Orange border if checked out
-                              border: isBorrowed ? Border.all(color: cAccent, width: 2) : null,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04), 
-                                  blurRadius: 10, 
-                                  offset: const Offset(0, 4)
-                                )
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  height: 70, width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: cBackground, 
-                                    borderRadius: BorderRadius.circular(15)
-                                  ),
-                                  // CHANGE: Swap icon if borrowed
-                                  child: Icon(
-                                    isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined, 
-                                    color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4)
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  item.name, 
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), 
-                                  maxLines: 1
-                                ),
-                                // CHANGE: Display borrower name instead of location if out
-                                Text(
-                                  isBorrowed ? "With: ${item.borrower!.name}" : item.location, 
-                                  style: TextStyle(
-                                    fontSize: 14, 
-                                    color: isBorrowed ? cHighlight : Colors.grey.shade600,
-                                    fontWeight: isBorrowed ? FontWeight.bold : FontWeight.normal,
+                        return Stack(
+                          children: [
+                            // THE MAIN CARD (Static Container)
+                            Container(
+                              width: double.infinity,
+                              height: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(28),
+                                border: isBorrowed ? Border.all(color: cAccent, width: 2) : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   )
-                                ),
-                                const SizedBox(height: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    // CHANGE: Use Flame/Accent color for "Checked Out" badge
-                                    color: isBorrowed 
-                                        ? cAccent.withOpacity(0.2) 
-                                        : (item.type == "Disposable" ? Colors.orange.withOpacity(0.1) : cSecondary.withOpacity(0.4)),
-                                    borderRadius: BorderRadius.circular(10),
+                                ],
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    height: 60,
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: cBackground,
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    child: Icon(
+                                      isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
+                                      color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
+                                    ),
                                   ),
-                                  child: Text(
-                                    isBorrowed ? "Checked Out" : (item.type == "Disposable" ? "Qty: ${item.quantity}" : "Reusable"),
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  const Spacer(),
+                                  Text(
+                                    item.name,
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                    maxLines: 1,
                                   ),
-                                )
-                              ],
+                                  Text(
+                                    isBorrowed ? "With: ${item.borrower!.name}" : item.location,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isBorrowed ? cHighlight : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  // Badge logic
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isBorrowed ? cAccent.withOpacity(0.2) : cSecondary.withOpacity(0.4),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      isBorrowed ? "Checked Out" : item.type,
+                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  )
+                                ],
+                              ),
                             ),
-                          ),
+
+                            // THE EDIT BUTTON
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: IconButton.filled(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: cPrimary.withOpacity(0.1),
+                                  foregroundColor: cPrimary,
+                                ),
+                                icon: const Icon(Icons.edit_outlined, size: 40),
+                                onPressed: () {
+                                  // THE FIX:
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (mounted) _showEditItemSheet(item, index);
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
