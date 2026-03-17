@@ -76,9 +76,25 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _qtyController = TextEditingController();
   String _selectedType = "Reusable";
 
+  // Add locations tracking
+  final Set<String> _locations = {}; // Default locations
+  String? _selectedLocation;
+
   final _bName = TextEditingController();
   final _bPhone = TextEditingController();
   final _bEmail = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _syncLocationsFromInventory();
+  }
+
+  void _syncLocationsFromInventory() {
+    for (final item in _inventory) {
+      _locations.add(item.location);
+    }
+  }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
@@ -126,6 +142,37 @@ class _HomePageState extends State<HomePage> {
               }
             },
             child: const Text("Confirm"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLocationDialog(void Function(void Function()) setSheetState) {
+    final TextEditingController newLocationController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add New Location"),
+        content: TextField(
+          controller: newLocationController,
+          decoration: const InputDecoration(hintText: "Enter location name"),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              final newLocation = newLocationController.text.trim();
+              if (newLocation.isNotEmpty && !_locations.contains(newLocation)) {
+                setSheetState(() {
+                  _locations.add(newLocation);
+                  _selectedLocation = newLocation;
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Add"),
           ),
         ],
       ),
@@ -222,6 +269,8 @@ class _HomePageState extends State<HomePage> {
 
   // --- THE ADD ITEM SHEET ---
   void _showAddItemSheet() {
+    // Reset form state
+    _selectedLocation = null;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -262,11 +311,14 @@ class _HomePageState extends State<HomePage> {
                       _buildTextField(_nameController, "e.g. Hiking Boots"),
 
                       _buildSectionLabel("Location *"),
-                      _buildTextField(_locationController, "e.g. Closet Shelf"), // TODO: make it dropdown with last option being "Add New Location" that opens a dialog to add to a list of locations
+                      _buildLocationDropdown(setSheetState),
+
+                      _buildSectionLabel("Quantity *"),
+                      _buildTextField(_qtyController, "Qty", isNum: true),
 
                       // Type & Quantity in one Row
                       _buildSectionLabel("Type *"),
-                      Row(  // TODO: either case requires qty input
+                      Row(
                         children: [
                           Checkbox(
                             value: _selectedType == "Reusable",
@@ -279,11 +331,12 @@ class _HomePageState extends State<HomePage> {
                             onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Disposable"); },
                           ),
                           const Text("Disposable"),
-                          if (_selectedType == "Disposable") ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildTextField(_qtyController, "Qty", isNum: true),
-                            ),
+                          if (_selectedType == "Reusable") ...[
+                            const Text("You can check out this item to others."),
+                            // const SizedBox(width: 12),
+                            // Expanded(
+                            //   child: _buildTextField(_qtyController, "Qty", isNum: true),
+                            // ),
                           ]
                         ],
                       ),
@@ -319,7 +372,11 @@ class _HomePageState extends State<HomePage> {
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           ),
-                          onPressed: () { if (_formKey.currentState!.validate()) _saveItem(); },
+                          onPressed: () { 
+                            if (_formKey.currentState!.validate()){
+                              _saveItem(setSheetState); 
+                            } 
+                          },
                           child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -334,21 +391,34 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _saveItem() {
-    setState(() {
-      _inventory.add(InventoryItem(
-        name: _nameController.text,
-        location: _locationController.text,
-        type: _selectedType,
-        quantity: _selectedType == "Disposable" ? _qtyController.text : null,
-        link: _linkController.text,
-        comment: _commentController.text,
-      ));
-    });
-    _nameController.clear();
-    _locationController.clear();
-    _qtyController.clear();
-    Navigator.pop(context);
+  void _saveItem(void Function(void Function()) setSheetState) {
+    if (_selectedLocation != null && _nameController.text.isNotEmpty) {
+      setState(() {
+        _inventory.add(InventoryItem(
+          name: _nameController.text,
+          location: _selectedLocation!,
+          type: _selectedType,
+          quantity: _selectedType == "Disposable" ? _qtyController.text : null,
+          link: _linkController.text,
+          comment: _commentController.text,
+        ));
+        // Add to locations set if not already present
+        _locations.add(_selectedLocation!);
+      });
+
+      // Clear controllers
+      _nameController.clear();
+      _locationController.clear();
+      _qtyController.clear();
+      _linkController.clear();
+      _commentController.clear();
+      
+      setSheetState(() {
+        _selectedLocation = null;
+      });
+      
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -491,6 +561,47 @@ class _HomePageState extends State<HomePage> {
         fillColor: cBackground,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
       ),
+    );
+  }
+
+  Widget _buildLocationDropdown(void Function(void Function()) setSheetState) {
+    final List<String> dropdownItems = [..._locations, "Add New Location"];
+
+    return DropdownButtonFormField<String>(
+      value: _locations.contains(_selectedLocation) ? _selectedLocation : null, 
+      hint: const Text("Select or add location"),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: cBackground,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+      ),
+      items: dropdownItems.map((location) {
+        return DropdownMenuItem<String>(
+          value: location,
+          child: Text(
+            location,
+            style: TextStyle(
+              color: location == "Add New Location" ? cPrimary : Colors.black,
+              fontWeight: location == "Add New Location" ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value == "Add New Location") {
+          _showAddLocationDialog(setSheetState);
+        } else {
+          setSheetState(() {
+            _selectedLocation = value;
+          });
+        }
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please select a location';
+        }
+        return null;
+      },
     );
   }
 }
