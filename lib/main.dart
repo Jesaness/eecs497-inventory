@@ -30,6 +30,40 @@ class InventoryApp extends StatelessWidget {
   }
 }
 
+/// A small reusable checkbox that can show a status message inline when enabled.
+class ReusableCheckbox extends StatelessWidget {
+  const ReusableCheckbox({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.onChanged,
+    this.enabledMessage,
+  });
+
+  final bool value;
+  final String label;
+  final ValueChanged<bool?> onChanged;
+  final String? enabledMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Checkbox(
+          value: value,
+          onChanged: onChanged,
+        ),
+        Text(label),
+        if (value && enabledMessage != null) ...[
+          const SizedBox(width: 8),
+          Text(enabledMessage!, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+}
+
 // --- NEW BORROWER MODEL ---
 class Borrower {
   final String name;
@@ -320,24 +354,17 @@ class _HomePageState extends State<HomePage> {
                       _buildSectionLabel("Type *"),
                       Row(
                         children: [
-                          Checkbox(
+                          ReusableCheckbox(
                             value: _selectedType == "Reusable",
-                            onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Reusable"); },
+                            label: "Reusable",
+                            onChanged: (val) {
+                              setSheetState(() {
+                                _selectedType = (val ?? false) ? "Reusable" : "Disposable";
+                              });
+                            },
+                            enabledMessage: "(borrowing system enabled)",
                           ),
-                          const Text("Reusable"), // TODO: means checkout function will be enabled for this item
                           const SizedBox(width: 8),
-                          Checkbox(
-                            value: _selectedType == "Disposable",
-                            onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Disposable"); },
-                          ),
-                          const Text("Disposable"),
-                          if (_selectedType == "Reusable") ...[
-                            const Text("You can check out this item to others."),
-                            // const SizedBox(width: 12),
-                            // Expanded(
-                            //   child: _buildTextField(_qtyController, "Qty", isNum: true),
-                            // ),
-                          ]
                         ],
                       ),
 
