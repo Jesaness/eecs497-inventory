@@ -362,7 +362,7 @@ class _HomePageState extends State<HomePage> {
                                 _selectedType = (val ?? false) ? "Reusable" : "Disposable";
                               });
                             },
-                            enabledMessage: "(borrowing system enabled)",
+                            enabledMessage: "(borrowing system enabled for this item)",
                           ),
                           const SizedBox(width: 8),
                         ],
