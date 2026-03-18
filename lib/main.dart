@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 // --- NEW COLOR PALETTE ---
 const Color cPrimary = Color(0xFF00A878);   // Midnight Green
@@ -21,7 +25,7 @@ class InventoryApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Georgia', // Soft, humanistic serif font
+        fontFamily: 'Georgia',
         colorScheme: ColorScheme.fromSeed(seedColor: cPrimary),
         scaffoldBackgroundColor: cBackground,
       ),
@@ -30,7 +34,38 @@ class InventoryApp extends StatelessWidget {
   }
 }
 
-// --- NEW BORROWER MODEL ---
+/// A small reusable checkbox that can show a status message inline when enabled.
+class ReusableCheckbox extends StatelessWidget {
+  const ReusableCheckbox({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.onChanged,
+    this.enabledMessage,
+  });
+
+  final bool value;
+  final String label;
+  final ValueChanged<bool?> onChanged;
+  final String? enabledMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Checkbox(value: value, onChanged: onChanged),
+        Text(label),
+        if (value && enabledMessage != null) ...[
+          const SizedBox(width: 8),
+          Text(enabledMessage!, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+}
+
+// --- BORROWER MODEL ---
 class Borrower {
   final String name;
   final String phone;
@@ -42,19 +77,23 @@ class InventoryItem {
   final String name;
   final String location;
   final String type;
+  final Uint8List? imageBytes;
   final String? link;
   final String? comment;
   final String? quantity;
-  Borrower? borrower; 
+  final String? imagePath;
+  Borrower? borrower;
 
   InventoryItem({
     required this.name,
     required this.location,
     required this.type,
+    this.imageBytes,
     this.link,
     this.comment,
     this.quantity,
-    this.borrower, 
+    this.imagePath,
+    this.borrower,
   });
 }
 
@@ -75,10 +114,50 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _commentController = TextEditingController();
   final TextEditingController _qtyController = TextEditingController();
   String _selectedType = "Reusable";
+  Uint8List? _webImage;
+
+  final Set<String> _locations = {};
+  String? _selectedLocation;
 
   final _bName = TextEditingController();
   final _bPhone = TextEditingController();
   final _bEmail = TextEditingController();
+
+  // --- SEARCH ---
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  List<InventoryItem> get _filteredInventory {
+    if (_searchQuery.isEmpty) return _inventory;
+    final q = _searchQuery.toLowerCase();
+    return _inventory.where((item) {
+      return item.name.toLowerCase().contains(q) ||
+          item.location.toLowerCase().contains(q) ||
+          item.type.toLowerCase().contains(q) ||
+          (item.borrower?.name.toLowerCase().contains(q) ?? false);
+    }).toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncLocationsFromInventory();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _syncLocationsFromInventory() {
+    for (final item in _inventory) {
+      _locations.add(item.location);
+    }
+  }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
@@ -121,11 +200,62 @@ class _HomePageState extends State<HomePage> {
                   item.borrower = Borrower(name: _bName.text, phone: _bPhone.text, email: _bEmail.text);
                 });
                 _bName.clear(); _bPhone.clear(); _bEmail.clear();
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context); // Close sheet
+                Navigator.pop(context);
+                Navigator.pop(context);
               }
             },
             child: const Text("Confirm"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(void Function(void Function()) setSheetState) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        final Uint8List imageBytes = await pickedFile.readAsBytes();
+        setSheetState(() {
+          _webImage = imageBytes;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+    }
+  }
+
+  void _showAddLocationDialog(void Function(void Function()) setSheetState) {
+    final TextEditingController newLocationController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add New Location"),
+        content: TextField(
+          controller: newLocationController,
+          decoration: const InputDecoration(hintText: "Enter location name"),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              final newLocation = newLocationController.text.trim();
+              if (newLocation.isNotEmpty && !_locations.contains(newLocation)) {
+                setSheetState(() {
+                  _locations.add(newLocation);
+                  _selectedLocation = newLocation;
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Add"),
           ),
         ],
       ),
@@ -139,7 +269,8 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(40))),
+        decoration: const BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(40))),
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,15 +283,12 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
             const SizedBox(height: 20),
-            // Info Rows
             _buildInfoRow(Icons.location_on_outlined, "Location", item.location),
             _buildInfoRow(Icons.category_outlined, "Type", "${item.type} ${item.quantity ?? ''}"),
-            
             const Divider(height: 40),
-
-            // --- BORROWER SECTION ---
             if (item.borrower != null) ...[
-              Text("Currently with ${item.borrower!.name}", style: const TextStyle(color: cHighlight, fontWeight: FontWeight.bold, fontSize: 18)),
+              Text("Currently with ${item.borrower!.name}",
+                  style: const TextStyle(color: cHighlight, fontWeight: FontWeight.bold, fontSize: 18)),
               Text("Phone: ${item.borrower!.phone}", style: const TextStyle(fontSize: 16)),
               const SizedBox(height: 20),
               _btn("Return Item", cPrimary, () {
@@ -170,11 +298,13 @@ class _HomePageState extends State<HomePage> {
             ] else ...[
               _btn("Check Out Item", cAccent, () => _showCheckoutDialog(item)),
             ],
-
             const Spacer(),
             Center(
               child: TextButton(
-                onPressed: () { setState(() => _inventory.removeAt(index)); Navigator.pop(context); },
+                onPressed: () {
+                  setState(() => _inventory.removeAt(index));
+                  Navigator.pop(context);
+                },
                 child: const Text("Delete from Inventory", style: TextStyle(color: Colors.red)),
               ),
             )
@@ -184,16 +314,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Small helper for the buttons
   Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
-    width: double.infinity, height: 55,
-    child: ElevatedButton(
-      style: ElevatedButton.styleFrom(backgroundColor: col, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-      onPressed: tap, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-    ),
-  );
+        width: double.infinity,
+        height: 55,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: col,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+          onPressed: tap,
+          child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      );
 
-  // --- STAT BOX COMPONENT ---
   Widget _buildStatBox(String title, String value, Color bgColor, Color textColor) {
     return Expanded(
       child: Container(
@@ -201,13 +334,7 @@ class _HomePageState extends State<HomePage> {
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: bgColor.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            )
-          ],
+          boxShadow: [BoxShadow(color: bgColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 5))],
         ),
         child: Column(
           children: [
@@ -220,8 +347,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // --- THE ADD ITEM SHEET ---
   void _showAddItemSheet() {
+    _selectedLocation = null;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -244,7 +371,6 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Header with Grey X Button
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -252,63 +378,70 @@ class _HomePageState extends State<HomePage> {
                             onPressed: () => Navigator.pop(context),
                             icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 30),
                           ),
-                          const Text("New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          const Text("Add New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                           const SizedBox(width: 48),
                         ],
                       ),
                       const SizedBox(height: 20),
-
                       _buildSectionLabel("Item Name *"),
                       _buildTextField(_nameController, "e.g. Hiking Boots"),
-
                       _buildSectionLabel("Location *"),
-                      _buildTextField(_locationController, "e.g. Closet Shelf"),
-
-                      // Type & Quantity in one Row
-                      _buildSectionLabel("Type & Quantity *"),
+                      _buildLocationDropdown(setSheetState),
+                      _buildSectionLabel("Quantity *"),
+                      _buildTextField(_qtyController, "Qty", isNum: true),
+                      _buildSectionLabel("Type *"),
                       Row(
                         children: [
-                          Checkbox(
+                          ReusableCheckbox(
                             value: _selectedType == "Reusable",
-                            onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Reusable"); },
+                            label: "Reusable",
+                            onChanged: (val) {
+                              setSheetState(() {
+                                _selectedType = (val ?? false) ? "Reusable" : "Disposable";
+                              });
+                            },
+                            enabledMessage: "(borrowing system enabled for this item)",
                           ),
-                          const Text("Reusable"),
                           const SizedBox(width: 8),
-                          Checkbox(
-                            value: _selectedType == "Disposable",
-                            onChanged: (val) { if (val == true) setSheetState(() => _selectedType = "Disposable"); },
-                          ),
-                          const Text("Disposable"),
-                          if (_selectedType == "Disposable") ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildTextField(_qtyController, "Qty", isNum: true),
-                            ),
-                          ]
                         ],
                       ),
-
-                      // Image Placeholder
                       _buildSectionLabel("Item Image"),
                       InkWell(
-                        onTap: () {}, // Image picker logic
+                        onTap: () => _pickImage(setSheetState),
                         child: Container(
                           width: double.infinity,
-                          height: 100,
+                          height: 120,
                           decoration: BoxDecoration(
                             color: cBackground,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
                           ),
-                          child: const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32),
+                          child: _webImage == null
+                              ? const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32)
+                              : Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Image.memory(_webImage!,
+                                          width: double.infinity, height: 120, fit: BoxFit.cover),
+                                    ),
+                                    Positioned(
+                                      right: 8, bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                            color: Colors.black54, shape: BoxShape.circle),
+                                        child: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
-
                       _buildSectionLabel("Link & Comments"),
                       _buildTextField(_linkController, "URL Link (Optional)"),
                       const SizedBox(height: 12),
                       _buildTextField(_commentController, "Notes...", maxLines: 3),
-
                       const SizedBox(height: 30),
                       SizedBox(
                         width: double.infinity,
@@ -319,8 +452,13 @@ class _HomePageState extends State<HomePage> {
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           ),
-                          onPressed: () { if (_formKey.currentState!.validate()) _saveItem(); },
-                          child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            if (_formKey.currentState!.validate()) {
+                              _saveItem(setSheetState);
+                            }
+                          },
+                          child: const Text("Add to Inventory",
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],
@@ -334,25 +472,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _saveItem() {
-    setState(() {
-      _inventory.add(InventoryItem(
-        name: _nameController.text,
-        location: _locationController.text,
-        type: _selectedType,
-        quantity: _selectedType == "Disposable" ? _qtyController.text : null,
-        link: _linkController.text,
-        comment: _commentController.text,
-      ));
-    });
-    _nameController.clear();
-    _locationController.clear();
-    _qtyController.clear();
-    Navigator.pop(context);
+  void _saveItem(void Function(void Function()) setSheetState) {
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Please enter an item name.")));
+      return;
+    }
+    if (_selectedLocation != null) {
+      setState(() {
+        _inventory.add(InventoryItem(
+          name: _nameController.text,
+          location: _selectedLocation!,
+          type: _selectedType,
+          imageBytes: _webImage,
+          quantity: _selectedType == "Disposable" ? _qtyController.text : null,
+          link: _linkController.text,
+          comment: _commentController.text,
+        ));
+      });
+      _nameController.clear();
+      _qtyController.clear();
+      _linkController.clear();
+      _commentController.clear();
+      setSheetState(() {
+        _selectedLocation = null;
+        _webImage = null;
+      });
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final filtered = _filteredInventory;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("My Inventory", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
@@ -365,93 +518,149 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- SEARCH BAR ---
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Search by name, location, borrower...",
+                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 15),
+                  prefixIcon: const Icon(Icons.search_rounded, color: cPrimary),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+                          onPressed: () => _searchController.clear(),
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // --- STAT BOXES ---
             Row(
               children: [
                 _buildStatBox("Total Items", _inventory.length.toString(), cPrimary, Colors.white),
                 const SizedBox(width: 16),
-                _buildStatBox("Checked Out", _inventory.where((i) => i.borrower != null).length.toString(), cSecondary, cPrimary),
+                _buildStatBox("Checked Out",
+                    _inventory.where((i) => i.borrower != null).length.toString(), cSecondary, cPrimary),
               ],
             ),
             const SizedBox(height: 32),
-            const Text("Current Stock", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+
+            // --- SECTION TITLE ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Current Stock", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                if (_searchQuery.isNotEmpty)
+                  Text(
+                    "${filtered.length} result${filtered.length == 1 ? '' : 's'}",
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                  ),
+              ],
+            ),
             const SizedBox(height: 16),
+
             Expanded(
-              child: _inventory.isEmpty
-                  ? const Center(child: Text("Empty. Let's add something!"))
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        _searchQuery.isNotEmpty
+                            ? "No items match \"$_searchQuery\""
+                            : "Empty. Let's add something!",
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 16),
+                      ),
+                    )
                   : GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2, 
-                        crossAxisSpacing: 16, 
-                        mainAxisSpacing: 16, 
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 220,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
                         childAspectRatio: 0.85,
                       ),
-                      itemCount: _inventory.length,
+                      itemCount: filtered.length,
                       itemBuilder: (context, index) {
-                        final item = _inventory[index];
-                        // CHECK: Is the item currently borrowed?
+                        final item = filtered[index];
+                        final int realIndex = _inventory.indexOf(item);
                         final bool isBorrowed = item.borrower != null;
 
                         return InkWell(
-                          // ACTION: Open the details popup created in Step 2
-                          onTap: () => _viewItemDetails(item, index),
+                          onTap: () => _viewItemDetails(item, realIndex),
                           borderRadius: BorderRadius.circular(28),
                           child: Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(28),
-                              // CHANGE: Add a Sunset Orange border if checked out
                               border: isBorrowed ? Border.all(color: cAccent, width: 2) : null,
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.04), 
-                                  blurRadius: 10, 
-                                  offset: const Offset(0, 4)
-                                )
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4))
                               ],
                             ),
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  height: 70, width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: cBackground, 
-                                    borderRadius: BorderRadius.circular(15)
-                                  ),
-                                  // CHANGE: Swap icon if borrowed
-                                  child: Icon(
-                                    isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined, 
-                                    color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4)
+                                Expanded(
+                                  child: Container(
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                        color: cBackground, borderRadius: BorderRadius.circular(15)),
+                                    child: item.imageBytes != null
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(15),
+                                            child: Image.memory(item.imageBytes!, fit: BoxFit.cover),
+                                          )
+                                        : Icon(
+                                            isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
+                                            color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
+                                          ),
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(height: 8),
+                                Text(item.name,
+                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                    maxLines: 1),
                                 Text(
-                                  item.name, 
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), 
-                                  maxLines: 1
-                                ),
-                                // CHANGE: Display borrower name instead of location if out
-                                Text(
-                                  isBorrowed ? "With: ${item.borrower!.name}" : item.location, 
+                                  isBorrowed ? "With: ${item.borrower!.name}" : item.location,
                                   style: TextStyle(
-                                    fontSize: 14, 
+                                    fontSize: 14,
                                     color: isBorrowed ? cHighlight : Colors.grey.shade600,
                                     fontWeight: isBorrowed ? FontWeight.bold : FontWeight.normal,
-                                  )
+                                  ),
                                 ),
                                 const SizedBox(height: 10),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
-                                    // CHANGE: Use Flame/Accent color for "Checked Out" badge
-                                    color: isBorrowed 
-                                        ? cAccent.withOpacity(0.2) 
-                                        : (item.type == "Disposable" ? Colors.orange.withOpacity(0.1) : cSecondary.withOpacity(0.4)),
+                                    color: isBorrowed
+                                        ? cAccent.withOpacity(0.2)
+                                        : (item.type == "Disposable"
+                                            ? Colors.orange.withOpacity(0.1)
+                                            : cSecondary.withOpacity(0.4)),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    isBorrowed ? "Checked Out" : (item.type == "Disposable" ? "Qty: ${item.quantity}" : "Reusable"),
+                                    isBorrowed
+                                        ? "Checked Out"
+                                        : (item.type == "Disposable" ? "Qty: ${item.quantity}" : "Reusable"),
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 )
@@ -474,12 +683,18 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // --- REUSABLE COMPONENTS ---
   Widget _buildSectionLabel(String text) {
-    return Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(top: 20, bottom: 8), child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))));
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 8),
+        child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      ),
+    );
   }
 
-  Widget _buildTextField(TextEditingController ctrl, String hint, {bool isNum = false, int maxLines = 1}) {
+  Widget _buildTextField(TextEditingController ctrl, String hint,
+      {bool isNum = false, int maxLines = 1}) {
     return TextFormField(
       controller: ctrl,
       keyboardType: isNum ? TextInputType.number : TextInputType.text,
@@ -491,6 +706,43 @@ class _HomePageState extends State<HomePage> {
         fillColor: cBackground,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
       ),
+    );
+  }
+
+  Widget _buildLocationDropdown(void Function(void Function()) setSheetState) {
+    final List<String> dropdownItems = [..._locations, "Add New Location"];
+
+    return DropdownButtonFormField<String>(
+      value: _locations.contains(_selectedLocation) ? _selectedLocation : null,
+      hint: const Text("Select or add location"),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: cBackground,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+      ),
+      items: dropdownItems.map((location) {
+        return DropdownMenuItem<String>(
+          value: location,
+          child: Text(
+            location,
+            style: TextStyle(
+              color: location == "Add New Location" ? cPrimary : Colors.black,
+              fontWeight: location == "Add New Location" ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value == "Add New Location") {
+          _showAddLocationDialog(setSheetState);
+        } else {
+          setSheetState(() => _selectedLocation = value);
+        }
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) return 'Please select a location';
+        return null;
+      },
     );
   }
 }
