@@ -80,6 +80,7 @@ class InventoryItem {
   final String name;
   final String location;
   final String type;
+  final Uint8List? imageBytes; // Store image as bytes for Web compatibility
   final String? link;
   final String? comment;
   final String? quantity;
@@ -90,6 +91,7 @@ class InventoryItem {
     required this.name,
     required this.location,
     required this.type,
+    this.imageBytes,
     this.link,
     this.comment,
     this.quantity,
@@ -459,7 +461,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           onPressed: () { 
                             if (_formKey.currentState!.validate()){
-                              _saveItem(setSheetState, imagePath: pickedImage?.path); 
+                              _saveItem(setSheetState); 
                             } 
                           },
                           child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -476,34 +478,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _saveItem(void Function(void Function()) setSheetState, {String? imagePath}) {
-    if (_selectedLocation != null && _nameController.text.isNotEmpty) {
+  void _saveItem(void Function(void Function()) setSheetState) {
+    // 1. Validation check (Double-check that a location is picked)
+      // Name
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter an item name.")));
+      return;
+    }
+      // Location
+    if (_selectedLocation != null) {
       setState(() {
         _inventory.add(InventoryItem(
           name: _nameController.text,
           location: _selectedLocation!,
           type: _selectedType,
+          imageBytes: _webImage, // Store the bytes we captured in _pickImage
           quantity: _selectedType == "Disposable" ? _qtyController.text : null,
           link: _linkController.text,
           comment: _commentController.text,
-          imagePath: imagePath,
         ));
-        // Add to locations set if not already present
-        _locations.add(_selectedLocation!);
       });
 
-      // Clear controllers
+      // 2. Clear all controllers for the next entry
       _nameController.clear();
-      _locationController.clear();
       _qtyController.clear();
       _linkController.clear();
       _commentController.clear();
       
+      // 3. Reset the selection and the image preview
       setSheetState(() {
-        _webImage = null;
         _selectedLocation = null;
+        _webImage = null; // Important: Clear the preview so the next item starts blank
       });
-      
+
+      // 4. Close the Bottom Sheet
       Navigator.pop(context);
     }
   }
@@ -536,10 +544,10 @@ class _HomePageState extends State<HomePage> {
               child: _inventory.isEmpty
                   ? const Center(child: Text("Empty. Let's add something!"))
                   : GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2, 
-                        crossAxisSpacing: 16, 
-                        mainAxisSpacing: 16, 
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 220,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
                         childAspectRatio: 0.85,
                       ),
                       itemCount: _inventory.length,
@@ -570,24 +578,26 @@ class _HomePageState extends State<HomePage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  height: 70, width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: cBackground, 
-                                    borderRadius: BorderRadius.circular(15)
+                                Expanded(
+                                  child: Container(
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: cBackground, 
+                                      borderRadius: BorderRadius.circular(15)
+                                    ),
+                                    // CHANGE: Show item image if available, otherwise fall back to icon
+                                    child: item.imageBytes != null
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(15),
+                                            child: Image.memory(item.imageBytes!, fit: BoxFit.cover),
+                                          )
+                                        : Icon(
+                                            isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
+                                            color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
+                                          ),
                                   ),
-                                  // CHANGE: Show item image if available, otherwise fall back to icon
-                                  child: item.imagePath != null
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(15),
-                                          child: Image.file(File(item.imagePath!), fit: BoxFit.cover),
-                                        )
-                                      : Icon(
-                                          isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
-                                          color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
-                                        ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(height: 8),
                                 Text(
                                   item.name, 
                                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), 
