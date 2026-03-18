@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 // --- NEW COLOR PALETTE ---
 const Color cPrimary = Color(0xFF00A878);   // Midnight Green
@@ -79,6 +83,7 @@ class InventoryItem {
   final String? link;
   final String? comment;
   final String? quantity;
+  final String? imagePath;
   Borrower? borrower; 
 
   InventoryItem({
@@ -88,6 +93,7 @@ class InventoryItem {
     this.link,
     this.comment,
     this.quantity,
+    this.imagePath,
     this.borrower, 
   });
 }
@@ -109,6 +115,7 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _commentController = TextEditingController();
   final TextEditingController _qtyController = TextEditingController();
   String _selectedType = "Reusable";
+  Uint8List? _webImage;
 
   // Add locations tracking
   final Set<String> _locations = {}; // Default locations
@@ -180,6 +187,32 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  // ImagePicker function that works for both Web and Mobile
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(void Function(void Function()) setSheetState) async {
+    try {
+      // 1. Open the gallery/file picker
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000, // Optional: Resize to save memory
+        imageQuality: 85, // Optional: Compress slightly
+      );
+
+      if (pickedFile != null) {
+        // 2. Read the file as bytes (Universal for Web/iOS/Android)
+        final Uint8List imageBytes = await pickedFile.readAsBytes();
+
+        // 3. Update the BottomSheet's state
+        setSheetState(() {
+          _webImage = imageBytes;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+    }
   }
 
   void _showAddLocationDialog(void Function(void Function()) setSheetState) {
@@ -305,6 +338,7 @@ class _HomePageState extends State<HomePage> {
   void _showAddItemSheet() {
     // Reset form state
     _selectedLocation = null;
+    XFile? pickedImage;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -368,19 +402,43 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
 
-                      // Image Placeholder
+                      // Image Picker
                       _buildSectionLabel("Item Image"),
                       InkWell(
-                        onTap: () {}, //TODO Image picker logic
+                        onTap: () => _pickImage(setSheetState), // Call the function here
                         child: Container(
                           width: double.infinity,
-                          height: 100,
+                          height: 120,
                           decoration: BoxDecoration(
                             color: cBackground,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
                           ),
-                          child: const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32),
+                          child: _webImage == null 
+                              ? const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32)
+                              : Stack(
+                                  children: [
+                                    // Display the actual image
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Image.memory(
+                                        _webImage!, 
+                                        width: double.infinity, 
+                                        height: 120, 
+                                        fit: BoxFit.cover
+                                      ),
+                                    ),
+                                    // Optional: Add a small "Change" badge
+                                    Positioned(
+                                      right: 8, bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                                        child: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
 
@@ -401,7 +459,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           onPressed: () { 
                             if (_formKey.currentState!.validate()){
-                              _saveItem(setSheetState); 
+                              _saveItem(setSheetState, imagePath: pickedImage?.path); 
                             } 
                           },
                           child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -418,7 +476,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _saveItem(void Function(void Function()) setSheetState) {
+  void _saveItem(void Function(void Function()) setSheetState, {String? imagePath}) {
     if (_selectedLocation != null && _nameController.text.isNotEmpty) {
       setState(() {
         _inventory.add(InventoryItem(
@@ -428,6 +486,7 @@ class _HomePageState extends State<HomePage> {
           quantity: _selectedType == "Disposable" ? _qtyController.text : null,
           link: _linkController.text,
           comment: _commentController.text,
+          imagePath: imagePath,
         ));
         // Add to locations set if not already present
         _locations.add(_selectedLocation!);
@@ -441,6 +500,7 @@ class _HomePageState extends State<HomePage> {
       _commentController.clear();
       
       setSheetState(() {
+        _webImage = null;
         _selectedLocation = null;
       });
       
@@ -516,11 +576,16 @@ class _HomePageState extends State<HomePage> {
                                     color: cBackground, 
                                     borderRadius: BorderRadius.circular(15)
                                   ),
-                                  // CHANGE: Swap icon if borrowed
-                                  child: Icon(
-                                    isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined, 
-                                    color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4)
-                                  ),
+                                  // CHANGE: Show item image if available, otherwise fall back to icon
+                                  child: item.imagePath != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(15),
+                                          child: Image.file(File(item.imagePath!), fit: BoxFit.cover),
+                                        )
+                                      : Icon(
+                                          isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
+                                          color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
+                                        ),
                                 ),
                                 const Spacer(),
                                 Text(
