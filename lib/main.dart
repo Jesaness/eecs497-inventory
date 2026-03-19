@@ -195,7 +195,6 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-
   String? _validateCheckoutQuantity(String? value, InventoryItem item) {
     final input = value?.trim() ?? '';
     final parsed = int.tryParse(input);
@@ -292,6 +291,175 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  void _showEditItemSheet(InventoryItem item, int index) {
+    // Pre-fill controllers with current item data
+    _nameController.text = item.name;
+    _locationController.text = item.location;
+    _selectedType = item.type;
+    _qtyController.text = item.quantity ?? "";
+    _linkController.text = item.link ?? "";
+    _commentController.text = item.comment ?? "";
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+          ),
+          padding: EdgeInsets.only(
+            top: 20,
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Edit ${item.name}",
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _buildSectionLabel("Item Name *"),
+                _buildTextField(_nameController, "Name"),
+
+                _buildSectionLabel("Location *"),
+                _buildTextField(_locationController, "Location"),
+
+                _buildSectionLabel("Type & Quantity"),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _selectedType == "Reusable",
+                      onChanged: (val) {
+                        if (val == true)
+                          setSheetState(() => _selectedType = "Reusable");
+                      },
+                    ),
+                    const Text("Reusable"),
+                    const SizedBox(width: 8),
+                    Checkbox(
+                      value: _selectedType == "Disposable",
+                      onChanged: (val) {
+                        if (val == true)
+                          setSheetState(() => _selectedType = "Disposable");
+                      },
+                    ),
+                    const Text("Disposable"),
+                    if (_selectedType == "Disposable" ||
+                        _selectedType == "Reusable") ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          _qtyController,
+                          "Qty",
+                          isNum: true,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
+                _buildSectionLabel("Link & Comments"),
+                _buildTextField(_linkController, "URL Link"),
+                const SizedBox(height: 12),
+                _buildTextField(_commentController, "Notes...", maxLines: 3),
+
+                const SizedBox(height: 30),
+                SizedBox(
+                  width: double.infinity,
+                  height: 60,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cPrimary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        // Update the item in the list
+                        _inventory[index] = InventoryItem(
+                          name: _nameController.text,
+                          location: _locationController.text,
+                          type: _selectedType,
+                          quantity: _selectedType == "Disposable"
+                              ? _qtyController.text
+                              : null,
+                          link: _linkController.text,
+                          comment: _commentController.text,
+                          borrower:
+                              item.borrower, // Preserve the borrower status
+                        );
+                      });
+                      // Clear and close
+                      _nameController.clear();
+                      _locationController.clear();
+                      Navigator.pop(context); // Close Edit Sheet
+                    },
+                    child: const Text(
+                      "Save Changes",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  //! FROM MIA BRANCH OLD CODE
+  // Small helper for the buttons
+  // Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
+  //   width: double.infinity, height: 55,
+  //   child: ElevatedButton(
+  //     style: ElevatedButton.styleFrom(backgroundColor: col, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+  //     onPressed: tap, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+  //   ),
+  // );
+
+  // // --- STAT BOX COMPONENT ---
+  // Widget _buildStatBox(String title, String value, Color bgColor, Color textColor) {
+  //   return Expanded(
+  //     child: Container(
+  //       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+  //       decoration: BoxDecoration(
+  //         color: bgColor,
+  //         borderRadius: BorderRadius.circular(28),
+  //         boxShadow: [
+  //           BoxShadow(
+  //             color: bgColor.withOpacity(0.3),
+  //             blurRadius: 12,
+  //             offset: const Offset(0, 5),
+  //           )
+  //         ],
+  //       ),
+  //       child: Column(
+  //         children: [
+  //           Text(title, style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w600)),
+  //           const SizedBox(height: 4),
+  //           Text(value, style: TextStyle(color: textColor, fontSize: 32, fontWeight: FontWeight.bold)),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   void _showCheckoutDialog(InventoryItem item) {
     _resetCheckoutFields();
@@ -623,13 +791,63 @@ class _HomePageState extends State<HomePage> {
                 style: const TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 20),
-              _btn('Return Item', cPrimary, () {
-                setState(() => item.borrower = null);
-                Navigator.pop(context);
-              }),
+              Row(
+                children: [
+                  Expanded(
+                    child: _btn('Return Item', cPrimary, () {
+                      setState(() => item.borrower = null);
+                      Navigator.pop(context);
+                    }),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _smallBtn(
+                      'Edit Item',
+                      cHighlight,
+                      () => _showEditItemSheet(item, index),
+                    ),
+                  ),
+                ],
+              ),
             ] else ...[
-              _btn('Check Out Item', cAccent, () => _showCheckoutDialog(item)),
+              Row(
+                children: [
+                  Expanded(
+                    child: _btn(
+                      'Check Out Item',
+                      cAccent,
+                      () => _showCheckoutDialog(item),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _smallBtn(
+                      'Edit Item',
+                      cHighlight,
+                      () => _showEditItemSheet(item, index),
+                    ),
+                  ),
+                ],
+              ),
             ],
+            // THE EDIT BUTTON
+            // Positioned(
+            //   top: 8,
+            //   right: 8,
+            //   child: IconButton.filled(
+            //     style: IconButton.styleFrom(
+            //       backgroundColor: cPrimary.withOpacity(0.1),
+            //       foregroundColor: cPrimary,
+            //     ),
+            //     icon: const Icon(Icons.edit_outlined, size: 40),
+            //     onPressed: () {
+            //       // THE FIX:
+            //       WidgetsBinding.instance.addPostFrameCallback((_) {
+            //         if (mounted) _showEditItemSheet(item, index);
+            //       });
+            //     },
+            //   ),
+            // ),
             const Spacer(),
             Center(
               child: TextButton(
@@ -650,7 +868,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
-    width: double.infinity,
+    height: 55,
+    child: ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: col,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      ),
+      onPressed: tap,
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+    ),
+  );
+
+  Widget _smallBtn(String label, Color col, VoidCallback tap) => SizedBox(
     height: 55,
     child: ElevatedButton(
       style: ElevatedButton.styleFrom(
