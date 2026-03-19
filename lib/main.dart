@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 const Color cPrimary = Color(0xFF00A878);
 const Color cSecondary = Color(0xFFD8F1A0);
@@ -29,6 +33,41 @@ class InventoryApp extends StatelessWidget {
   }
 }
 
+/// A small reusable checkbox that can show a status message inline when enabled.
+class ReusableCheckbox extends StatelessWidget {
+  const ReusableCheckbox({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.onChanged,
+    this.enabledMessage,
+  });
+
+  final bool value;
+  final String label;
+  final ValueChanged<bool?> onChanged;
+  final String? enabledMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Checkbox(value: value, onChanged: onChanged),
+        Text(label),
+        if (value && enabledMessage != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            enabledMessage!,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// --- BORROWER MODEL ---
 class Borrower {
   final String name;
   final String phone;
@@ -49,18 +88,22 @@ class InventoryItem {
   final String name;
   final String location;
   final String type;
+  final Uint8List? imageBytes;
   final String? link;
   final String? comment;
   final String? quantity;
+  final String? imagePath;
   Borrower? borrower;
 
   InventoryItem({
     required this.name,
     required this.location,
     required this.type,
+    this.imageBytes,
     this.link,
     this.comment,
     this.quantity,
+    this.imagePath,
     this.borrower,
   });
 }
@@ -86,6 +129,10 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _bPhone = TextEditingController();
   final TextEditingController _bEmail = TextEditingController();
   final TextEditingController _bQuantity = TextEditingController(text: '1');
+  Uint8List? _webImage;
+
+  final Set<String> _locations = {};
+  String? _selectedLocation;
 
   String _selectedType = 'Reusable';
   DateTimeRange? _checkoutRange;
@@ -106,8 +153,18 @@ class _HomePageState extends State<HomePage> {
 
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
@@ -125,7 +182,8 @@ class _HomePageState extends State<HomePage> {
     final input = value?.trim() ?? '';
     final digits = input.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) return 'Phone number is required.';
-    if (digits.length < 10 || digits.length > 15) return 'Enter a valid phone number.';
+    if (digits.length < 10 || digits.length > 15)
+      return 'Enter a valid phone number.';
     return null;
   }
 
@@ -137,13 +195,6 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  String? _validateInventoryQuantity(String? value) {
-    if (_selectedType == 'Reusable') return null;
-    final input = value?.trim() ?? '';
-    final parsed = int.tryParse(input);
-    if (parsed == null || parsed <= 0) return 'Enter available quantity.';
-    return null;
-  }
 
   String? _validateCheckoutQuantity(String? value, InventoryItem item) {
     final input = value?.trim() ?? '';
@@ -164,11 +215,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _pickCheckoutRange(StateSetter setSheetState) async {
     final now = DateTime.now();
-    final initialRange = _checkoutRange ??
-        DateTimeRange(
-          start: now,
-          end: now.add(const Duration(days: 7)),
-        );
+    final initialRange =
+        _checkoutRange ??
+        DateTimeRange(start: now, end: now.add(const Duration(days: 7)));
 
     final picked = await showDateRangePicker(
       context: context,
@@ -180,6 +229,36 @@ class _HomePageState extends State<HomePage> {
 
     if (picked != null) {
       setSheetState(() => _checkoutRange = picked);
+    }
+  }
+
+  // --- SEARCH ---
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  List<InventoryItem> get _filteredInventory {
+    if (_searchQuery.isEmpty) return _inventory;
+    final q = _searchQuery.toLowerCase();
+    return _inventory.where((item) {
+      return item.name.toLowerCase().contains(q) ||
+          item.location.toLowerCase().contains(q) ||
+          item.type.toLowerCase().contains(q) ||
+          (item.borrower?.name.toLowerCase().contains(q) ?? false);
+    }).toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncLocationsFromInventory();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text);
+    });
+  }
+
+  void _syncLocationsFromInventory() {
+    for (final item in _inventory) {
+      _locations.add(item.location);
     }
   }
 
@@ -201,7 +280,10 @@ class _HomePageState extends State<HomePage> {
                 ),
                 Text(
                   value,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
@@ -245,7 +327,10 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       const Text(
                         'Checkout Item',
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(sheetContext),
@@ -287,7 +372,10 @@ class _HomePageState extends State<HomePage> {
                         if (item.quantity != null) ...[
                           const SizedBox(height: 10),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.16),
                               borderRadius: BorderRadius.circular(14),
@@ -308,7 +396,8 @@ class _HomePageState extends State<HomePage> {
                   _buildTextField(
                     _bName,
                     'e.g. Grace Pang',
-                    validator: (value) => _requiredField(value, 'Borrower name is required.'),
+                    validator: (value) =>
+                        _requiredField(value, 'Borrower name is required.'),
                   ),
                   _buildSectionLabel('Phone Number *'),
                   _buildTextField(
@@ -330,7 +419,8 @@ class _HomePageState extends State<HomePage> {
                     item.type == 'Reusable' ? '1' : 'How many?',
                     isNum: true,
                     readOnly: item.type == 'Reusable',
-                    validator: (value) => _validateCheckoutQuantity(value, item),
+                    validator: (value) =>
+                        _validateCheckoutQuantity(value, item),
                   ),
                   _buildSectionLabel('Timeframe *'),
                   InkWell(
@@ -338,7 +428,10 @@ class _HomePageState extends State<HomePage> {
                     onTap: () => _pickCheckoutRange(setSheetState),
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 18,
+                      ),
                       decoration: BoxDecoration(
                         color: cBackground,
                         borderRadius: BorderRadius.circular(18),
@@ -346,7 +439,10 @@ class _HomePageState extends State<HomePage> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_month_rounded, color: cPrimary),
+                          const Icon(
+                            Icons.calendar_month_rounded,
+                            color: cPrimary,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -355,8 +451,12 @@ class _HomePageState extends State<HomePage> {
                                   : _formatRange(_checkoutRange!),
                               style: TextStyle(
                                 fontSize: 15,
-                                color: _checkoutRange == null ? Colors.grey.shade600 : Colors.black87,
-                                fontWeight: _checkoutRange == null ? FontWeight.normal : FontWeight.w600,
+                                color: _checkoutRange == null
+                                    ? Colors.grey.shade600
+                                    : Colors.black87,
+                                fontWeight: _checkoutRange == null
+                                    ? FontWeight.normal
+                                    : FontWeight.w600,
                               ),
                             ),
                           ),
@@ -369,12 +469,16 @@ class _HomePageState extends State<HomePage> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         'A timeframe is required.',
-                        style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 28),
                   _btn('Confirm Checkout', cHighlight, () {
-                    final isValid = _checkoutFormKey.currentState?.validate() ?? false;
+                    final isValid =
+                        _checkoutFormKey.currentState?.validate() ?? false;
                     if (!isValid || _checkoutRange == null) {
                       setSheetState(() {});
                       return;
@@ -384,7 +488,9 @@ class _HomePageState extends State<HomePage> {
                       item.borrower = Borrower(
                         name: _bName.text.trim(),
                         phone: _bPhone.text.trim(),
-                        email: _bEmail.text.trim().isEmpty ? null : _bEmail.text.trim(),
+                        email: _bEmail.text.trim().isEmpty
+                            ? null
+                            : _bEmail.text.trim(),
                         quantity: int.parse(_bQuantity.text),
                         timeframe: _checkoutRange!,
                       );
@@ -403,13 +509,67 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(void Function(void Function()) setSheetState) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        final Uint8List imageBytes = await pickedFile.readAsBytes();
+        setSheetState(() {
+          _webImage = imageBytes;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+    }
+  }
+
+  void _showAddLocationDialog(void Function(void Function()) setSheetState) {
+    final TextEditingController newLocationController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add New Location"),
+        content: TextField(
+          controller: newLocationController,
+          decoration: const InputDecoration(hintText: "Enter location name"),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newLocation = newLocationController.text.trim();
+              if (newLocation.isNotEmpty && !_locations.contains(newLocation)) {
+                setSheetState(() {
+                  _locations.add(newLocation);
+                  _selectedLocation = newLocation;
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _viewItemDetails(InventoryItem item, int index) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.82,
+        height: MediaQuery.of(context).size.height * 0.8,
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
@@ -424,7 +584,10 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: Text(
                     item.name,
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -434,25 +597,29 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
             const SizedBox(height: 20),
-            _buildInfoRow(Icons.location_on_outlined, 'Location', item.location),
-            _buildInfoRow(Icons.category_outlined, 'Type', '${item.type} ${item.quantity ?? ''}'),
+            _buildInfoRow(
+              Icons.location_on_outlined,
+              'Location',
+              item.location,
+            ),
+            _buildInfoRow(
+              Icons.category_outlined,
+              'Type',
+              '${item.type} ${item.quantity ?? ''}',
+            ),
             const Divider(height: 40),
+
             if (item.borrower != null) ...[
               Text(
-                'Currently with ${item.borrower!.name}',
+                "Currently with ${item.borrower!.name}",
                 style: const TextStyle(
                   color: cHighlight,
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text('Phone: ${item.borrower!.phone}', style: const TextStyle(fontSize: 16)),
-              if (item.borrower!.email?.isNotEmpty == true)
-                Text('Email: ${item.borrower!.email}', style: const TextStyle(fontSize: 16)),
-              Text('Quantity: ${item.borrower!.quantity}', style: const TextStyle(fontSize: 16)),
               Text(
-                'Timeframe: ${_formatRange(item.borrower!.timeframe)}',
+                "Phone: ${item.borrower!.phone}",
                 style: const TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 20),
@@ -471,7 +638,7 @@ class _HomePageState extends State<HomePage> {
                   Navigator.pop(context);
                 },
                 child: const Text(
-                  'Delete from Inventory',
+                  "Delete from Inventory",
                   style: TextStyle(color: Colors.red),
                 ),
               ),
@@ -483,20 +650,25 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
-        width: double.infinity,
-        height: 55,
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: col,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          ),
-          onPressed: tap,
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-      );
+    width: double.infinity,
+    height: 55,
+    child: ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: col,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      ),
+      onPressed: tap,
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+    ),
+  );
 
-  Widget _buildStatBox(String title, String value, Color bgColor, Color textColor) {
+  Widget _buildStatBox(
+    String title,
+    String value,
+    Color bgColor,
+    Color textColor,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
@@ -524,7 +696,11 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 4),
             Text(
               value,
-              style: TextStyle(color: textColor, fontSize: 32, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: textColor,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -533,6 +709,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showAddItemSheet() {
+    _selectedLocation = null;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -562,81 +739,104 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           IconButton(
                             onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded, color: Colors.grey, size: 30),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.grey,
+                              size: 30,
+                            ),
                           ),
                           const Text(
-                            'New Item',
-                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                            "Add New Item",
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(width: 48),
                         ],
                       ),
                       const SizedBox(height: 20),
-                      _buildSectionLabel('Item Name *'),
-                      _buildTextField(
-                        _nameController,
-                        'e.g. Hiking Boots',
-                        validator: (value) => _requiredField(value, 'Item name is required.'),
-                      ),
-                      _buildSectionLabel('Location *'),
-                      _buildTextField(
-                        _locationController,
-                        'e.g. Closet Shelf',
-                        validator: (value) => _requiredField(value, 'Location is required.'),
-                      ),
-                      _buildSectionLabel('Type & Quantity *'),
+                      _buildSectionLabel("Item Name *"),
+                      _buildTextField(_nameController, "e.g. Hiking Boots"),
+                      _buildSectionLabel("Location *"),
+                      _buildLocationDropdown(setSheetState),
+                      _buildSectionLabel("Quantity *"),
+                      _buildTextField(_qtyController, "Qty", isNum: true),
+                      _buildSectionLabel("Type *"),
                       Row(
                         children: [
-                          Checkbox(
-                            value: _selectedType == 'Reusable',
+                          ReusableCheckbox(
+                            value: _selectedType == "Reusable",
+                            label: "Reusable",
                             onChanged: (val) {
-                              if (val == true) {
-                                setSheetState(() => _selectedType = 'Reusable');
-                              }
+                              setSheetState(() {
+                                _selectedType = (val ?? false)
+                                    ? "Reusable"
+                                    : "Disposable";
+                              });
                             },
+                            enabledMessage:
+                                "(borrowing system enabled for this item)",
                           ),
-                          const Text('Reusable'),
                           const SizedBox(width: 8),
-                          Checkbox(
-                            value: _selectedType == 'Disposable',
-                            onChanged: (val) {
-                              if (val == true) {
-                                setSheetState(() => _selectedType = 'Disposable');
-                              }
-                            },
-                          ),
-                          const Text('Disposable'),
-                          if (_selectedType == 'Disposable') ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildTextField(
-                                _qtyController,
-                                'Qty',
-                                isNum: true,
-                                validator: _validateInventoryQuantity,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
-                      _buildSectionLabel('Item Image'),
+                      _buildSectionLabel("Item Image"),
                       InkWell(
-                        onTap: () {},
+                        onTap: () => _pickImage(setSheetState),
                         child: Container(
                           width: double.infinity,
-                          height: 100,
+                          height: 120,
                           decoration: BoxDecoration(
                             color: cBackground,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: Colors.grey.shade300),
                           ),
-                          child: const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32),
+                          child: _webImage == null
+                              ? const Icon(
+                                  Icons.add_a_photo_outlined,
+                                  color: cPrimary,
+                                  size: 32,
+                                )
+                              : Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Image.memory(
+                                        _webImage!,
+                                        width: double.infinity,
+                                        height: 120,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 8,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
-                      _buildSectionLabel('Link & Comments'),
-                      _buildTextField(_linkController, 'URL Link (Optional)'),
+                      _buildSectionLabel("Link & Comments"),
+                      _buildTextField(_linkController, "URL Link (Optional)"),
                       const SizedBox(height: 12),
-                      _buildTextField(_commentController, 'Notes...', maxLines: 3),
+                      _buildTextField(
+                        _commentController,
+                        "Notes...",
+                        maxLines: 3,
+                      ),
                       const SizedBox(height: 30),
                       SizedBox(
                         width: double.infinity,
@@ -645,14 +845,21 @@ class _HomePageState extends State<HomePage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: cPrimary,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
                           ),
                           onPressed: () {
-                            if (_formKey.currentState!.validate()) _saveItem();
+                            if (_formKey.currentState!.validate()) {
+                              _saveItem(setSheetState);
+                            }
                           },
                           child: const Text(
-                            'Add to Inventory',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            "Add to Inventory",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -667,34 +874,51 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _saveItem() {
-    setState(() {
-      _inventory.add(
-        InventoryItem(
-          name: _nameController.text.trim(),
-          location: _locationController.text.trim(),
-          type: _selectedType,
-          quantity: _selectedType == 'Disposable' ? _qtyController.text.trim() : null,
-          link: _linkController.text.trim(),
-          comment: _commentController.text.trim(),
-        ),
+  void _saveItem(void Function(void Function()) setSheetState) {
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter an item name.")),
       );
-    });
-
-    _nameController.clear();
-    _locationController.clear();
-    _linkController.clear();
-    _commentController.clear();
-    _qtyController.clear();
-    _selectedType = 'Reusable';
-    Navigator.pop(context);
+      return;
+    }
+    if (_selectedLocation != null) {
+      setState(() {
+        _inventory.add(
+          InventoryItem(
+            name: _nameController.text,
+            location: _selectedLocation!,
+            type: _selectedType,
+            imageBytes: _webImage,
+            quantity: _selectedType == "Disposable"
+                ? _qtyController.text
+                : null,
+            link: _linkController.text,
+            comment: _commentController.text,
+          ),
+        );
+      });
+      _nameController.clear();
+      _qtyController.clear();
+      _linkController.clear();
+      _commentController.clear();
+      setSheetState(() {
+        _selectedLocation = null;
+        _webImage = null;
+      });
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final filtered = _filteredInventory;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Inventory', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
+        title: const Text(
+          'My Inventory',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+        ),
         centerTitle: true,
         backgroundColor: cBackground,
         elevation: 0,
@@ -704,111 +928,123 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- SEARCH BAR ---
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Colors.white, Color(0xFFF0F7F4)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: BorderRadius.circular(32),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      _buildStatBox('Total Items', _inventory.length.toString(), cPrimary, Colors.white),
-                      const SizedBox(width: 16),
-                      _buildStatBox(
-                        'Checked Out',
-                        _inventory.where((i) => i.borrower != null).length.toString(),
-                        cSecondary,
-                        cPrimary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Current Stock',
-                          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: cAccent.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          '${_inventory.where((i) => i.borrower == null).length} available now',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Search by name, location, borrower...",
+                  hintStyle: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontSize: 15,
+                  ),
+                  prefixIcon: const Icon(Icons.search_rounded, color: cPrimary),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: Colors.grey.shade400,
+                          ),
+                          onPressed: () => _searchController.clear(),
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+
+            // --- STAT BOXES ---
+            Row(
+              children: [
+                _buildStatBox(
+                  "Total Items",
+                  _inventory.length.toString(),
+                  cPrimary,
+                  Colors.white,
+                ),
+                const SizedBox(width: 16),
+                _buildStatBox(
+                  "Checked Out",
+                  _inventory.where((i) => i.borrower != null).length.toString(),
+                  cSecondary,
+                  cPrimary,
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+            // --- SECTION TITLE ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Current Stock",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                if (_searchQuery.isNotEmpty)
+                  Text(
+                    "${filtered.length} result${filtered.length == 1 ? '' : 's'}",
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
             Expanded(
-              child: _inventory.isEmpty
+              child: filtered.isEmpty
                   ? Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(28),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(28),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 16,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.inventory_2_outlined, size: 56, color: cPrimary),
-                            SizedBox(height: 12),
-                            Text(
-                              'Inventory is empty',
-                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Add an item to start tracking stock and checkouts.',
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                      child: Text(
+                        _searchQuery.isNotEmpty
+                            ? "No items match \"$_searchQuery\""
+                            : "Empty. Let's add something!",
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 16,
                         ),
                       ),
                     )
                   : GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 0.85,
-                      ),
-                      itemCount: _inventory.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 220,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.85,
+                          ),
+                      itemCount: filtered.length,
                       itemBuilder: (context, index) {
-                        final item = _inventory[index];
+                        final item = filtered[index];
+                        final int realIndex = _inventory.indexOf(item);
                         final bool isBorrowed = item.borrower != null;
 
                         return InkWell(
-                          onTap: () => _viewItemDetails(item, index),
+                          onTap: () => _viewItemDetails(item, realIndex),
                           borderRadius: BorderRadius.circular(28),
                           child: Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(28),
-                              border: isBorrowed ? Border.all(color: cAccent, width: 2) : null,
+                              border: isBorrowed
+                                  ? Border.all(color: cAccent, width: 2)
+                                  : null,
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.04),
@@ -821,51 +1057,80 @@ class _HomePageState extends State<HomePage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  height: 70,
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: cBackground,
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  child: Icon(
-                                    isBorrowed ? Icons.outbox_rounded : Icons.inventory_2_outlined,
-                                    color: isBorrowed ? cAccent : cPrimary.withOpacity(0.4),
+                                Expanded(
+                                  child: Container(
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: cBackground,
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    child: item.imageBytes != null
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              15,
+                                            ),
+                                            child: Image.memory(
+                                              item.imageBytes!,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        : Icon(
+                                            isBorrowed
+                                                ? Icons.outbox_rounded
+                                                : Icons.inventory_2_outlined,
+                                            color: isBorrowed
+                                                ? cAccent
+                                                : cPrimary.withOpacity(0.4),
+                                          ),
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(height: 8),
                                 Text(
                                   item.name,
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  isBorrowed ? 'With: ${item.borrower!.name}' : item.location,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: isBorrowed ? cHighlight : Colors.grey.shade600,
-                                    fontWeight: isBorrowed ? FontWeight.bold : FontWeight.normal,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                   maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  isBorrowed
+                                      ? "With: ${item.borrower!.name}"
+                                      : item.location,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isBorrowed
+                                        ? cHighlight
+                                        : Colors.grey.shade600,
+                                    fontWeight: isBorrowed
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
                                 ),
                                 const SizedBox(height: 10),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isBorrowed
                                         ? cAccent.withOpacity(0.2)
-                                        : (item.type == 'Disposable'
-                                            ? Colors.orange.withOpacity(0.1)
-                                            : cSecondary.withOpacity(0.4)),
+                                        : (item.type == "Disposable"
+                                              ? Colors.orange.withOpacity(0.1)
+                                              : cSecondary.withOpacity(0.4)),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
                                     isBorrowed
-                                        ? 'Out: ${item.borrower!.quantity}'
-                                        : (item.type == 'Disposable' ? 'Qty: ${item.quantity}' : 'Reusable'),
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                        ? "Checked Out"
+                                        : (item.type == "Disposable"
+                                              ? "Qty: ${item.quantity}"
+                                              : "Reusable"),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -911,7 +1176,8 @@ class _HomePageState extends State<HomePage> {
   }) {
     return TextFormField(
       controller: ctrl,
-      keyboardType: keyboardType ?? (isNum ? TextInputType.number : TextInputType.text),
+      keyboardType:
+          keyboardType ?? (isNum ? TextInputType.number : TextInputType.text),
       inputFormatters: isNum ? [FilteringTextInputFormatter.digitsOnly] : [],
       maxLines: maxLines,
       readOnly: readOnly,
@@ -933,6 +1199,48 @@ class _HomePageState extends State<HomePage> {
           borderSide: const BorderSide(color: cHighlight, width: 1.2),
         ),
       ),
+    );
+  }
+
+  Widget _buildLocationDropdown(void Function(void Function()) setSheetState) {
+    final List<String> dropdownItems = [..._locations, "Add New Location"];
+
+    return DropdownButtonFormField<String>(
+      value: _locations.contains(_selectedLocation) ? _selectedLocation : null,
+      hint: const Text("Select or add location"),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: cBackground,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      items: dropdownItems.map((location) {
+        return DropdownMenuItem<String>(
+          value: location,
+          child: Text(
+            location,
+            style: TextStyle(
+              color: location == "Add New Location" ? cPrimary : Colors.black,
+              fontWeight: location == "Add New Location"
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+            ),
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value == "Add New Location") {
+          _showAddLocationDialog(setSheetState);
+        } else {
+          setSheetState(() => _selectedLocation = value);
+        }
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) return 'Please select a location';
+        return null;
+      },
     );
   }
 }
