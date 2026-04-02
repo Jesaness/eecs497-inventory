@@ -101,7 +101,7 @@ class _HomePageState extends State<HomePage> {
   final Set<String> _locations = {};
   String? _selectedLocation;
 
-  String _selectedType = 'Reusable';
+  String _selectedType = 'Disposable';
   DateTimeRange? _checkoutRange;
 
   String _filterMode = "All"; // Options: "All", "Storage", "CheckedOut"
@@ -256,19 +256,46 @@ class _HomePageState extends State<HomePage> {
         _buildLocationDropdown(
           setSheetState,
           validator: (value) =>
-                _requiredField(value, 'Storate Location is required.'),
+                _requiredField(value, 'Storage Location is required.'),
         ),
 
         _buildSectionLabel("Quantity *"),
-        _buildTextField(
-          _qtyController, 
-          "Qty", 
-          isNum: true,
-          validator: (value) {
-            if (value == null || value.isEmpty) return 'Quantity is required';
-            if (int.tryParse(value) == null) return 'Enter a whole number';
-            return null;
-          },
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // MINUS BUTTON
+            _buildStepperBtn(Icons.remove_rounded, () {
+              int current = int.tryParse(_qtyController.text) ?? 0;
+              if (current > 0) {
+                setSheetState(() => _qtyController.text = (current - 1).toString());
+              }
+            }),
+            
+            // MANUAL INPUT BOX
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 80,
+              child: _buildTextField(
+                _qtyController,
+                "Qty",
+                isNum: true,
+                // Center the text inside the box for better looks
+                textAlign: TextAlign.center, 
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  if (int.tryParse(value) == null) return 'Invalid';
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // PLUS BUTTON
+            _buildStepperBtn(Icons.add_rounded, () {
+              int current = int.tryParse(_qtyController.text) ?? 0;
+              setSheetState(() => _qtyController.text = (current + 1).toString());
+            }),
+          ],
         ),
 
         _buildSectionLabel("Item Category *"),
@@ -277,17 +304,45 @@ class _HomePageState extends State<HomePage> {
             borderRadius: BorderRadius.circular(15),
             selectedColor: Colors.white,
             fillColor: cPrimary,
-            isSelected: [_selectedType == "Reusable", _selectedType == "Disposable"],
+            constraints: const BoxConstraints(minHeight: 45, minWidth: 130),
+            isSelected: [
+              _selectedType == "Reusable",
+              _selectedType == "Disposable",
+            ],
             onPressed: (index) {
               setSheetState(() {
                 _selectedType = (index == 0) ? "Reusable" : "Disposable";
               });
             },
-            constraints: const BoxConstraints(minHeight: 45, minWidth: 130),
             children: const [
-              Text("Reusable", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("Disposable", style: TextStyle(fontWeight: FontWeight.bold)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text("Reusable", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text("Disposable", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ],
+          ),
+        ),
+
+        // NEW: Dynamic Helper Text
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0, bottom: 12.0),
+          child: Center(
+            child: Text(
+              _selectedType == "Reusable"
+                  ? "✓ Can be checked out and returned by borrowers."
+                  : "⚠ Consumable item (e.g. spoons, plates). Not for checkout.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _selectedType == "Reusable" ? cPrimary : Colors.grey.shade600,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ),
         ),
 
@@ -878,7 +933,7 @@ class _HomePageState extends State<HomePage> {
       _linkController.clear();
       _commentController.clear();
       _selectedLocation = null;
-      _selectedType = "Reusable";
+      _selectedType = "Disposable";
       _webImage = null;
 
       showModalBottomSheet(
@@ -1589,10 +1644,12 @@ class _HomePageState extends State<HomePage> {
     int maxLines = 1,
     bool readOnly = false,
     TextInputType? keyboardType,
+    TextAlign textAlign = TextAlign.start,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: ctrl,
+      textAlign: textAlign,
       keyboardType:
           keyboardType ?? (isNum ? TextInputType.number : TextInputType.text),
       inputFormatters: isNum ? [FilteringTextInputFormatter.digitsOnly] : [],
@@ -1666,4 +1723,17 @@ Widget _buildLocationDropdown(
       },
     );
   }  
+
+Widget _buildStepperBtn(IconData icon, VoidCallback onPressed) {
+  return Container(
+    decoration: BoxDecoration(
+      color: cPrimary.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: IconButton(
+      icon: Icon(icon, color: cPrimary),
+      onPressed: onPressed,
+    ),
+  );
+}
 }
