@@ -773,7 +773,22 @@ class _HomePageState extends State<HomePage> {
             _buildInfoRow(
               Icons.category_outlined,
               'Type',
-              '${item.type} ${item.quantity ?? ''}',
+              item.type,
+            ),
+            _buildInfoRow(
+              Icons.inventory,
+              'Quantity',
+              '${item.quantity}',
+            ),
+            _buildInfoRow(
+              Icons.link,
+              'Link',
+              (item.link == null || item.link!.isEmpty) ? 'None' : item.link!,
+            ),
+            _buildInfoRow(
+              Icons.comment,
+              'Comments',
+              (item.comment == null || item.comment!.isEmpty) ? 'None' : item.comment!,
             ),
             const Divider(height: 40),
 
@@ -810,25 +825,39 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ] else ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: _btn(
-                      'Check Out Item',
-                      cAccent,
-                      () => _showCheckoutDialog(item),
+              if(item.type == "Reusable") ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _btn(
+                        'Check Out Item',
+                        cAccent,
+                        () => _showCheckoutDialog(item),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _smallBtn(
-                      'Edit Item',
-                      cHighlight,
-                      () => _showEditItemSheet(item, index),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _smallBtn(
+                        'Edit Item',
+                        cHighlight,
+                        () => _showEditItemSheet(item, index),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _smallBtn(
+                        'Edit Item',
+                        cHighlight,
+                        () => _showEditItemSheet(item, index),
+                      ),
+                    ),
+                  ],
+                ),
+              ]
             ],
             // THE EDIT BUTTON
             // Positioned(
@@ -1119,9 +1148,7 @@ class _HomePageState extends State<HomePage> {
             location: _selectedLocation!,
             type: _selectedType,
             imageBytes: _webImage,
-            quantity: _selectedType == "Disposable"
-                ? _qtyController.text
-                : null,
+            quantity: _qtyController.text,
             link: _linkController.text,
             comment: _commentController.text,
           ),
@@ -1354,9 +1381,7 @@ class _HomePageState extends State<HomePage> {
                                   child: Text(
                                     isBorrowed
                                         ? "Checked Out"
-                                        : (item.type == "Disposable"
-                                              ? "Qty: ${item.quantity}"
-                                              : "Reusable"),
+                                        : "Qty: ${item.quantity}",
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
