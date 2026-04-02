@@ -33,40 +33,6 @@ class InventoryApp extends StatelessWidget {
   }
 }
 
-/// A small reusable checkbox that can show a status message inline when enabled.
-class ReusableCheckbox extends StatelessWidget {
-  const ReusableCheckbox({
-    super.key,
-    required this.value,
-    required this.label,
-    required this.onChanged,
-    this.enabledMessage,
-  });
-
-  final bool value;
-  final String label;
-  final ValueChanged<bool?> onChanged;
-  final String? enabledMessage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Checkbox(value: value, onChanged: onChanged),
-        Text(label),
-        if (value && enabledMessage != null) ...[
-          const SizedBox(width: 8),
-          Text(
-            enabledMessage!,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 // --- BORROWER MODEL ---
 class Borrower {
   final String name;
@@ -114,6 +80,7 @@ class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
 }
+
 
 class _HomePageState extends State<HomePage> {
   final List<InventoryItem> _inventory = [];
@@ -261,6 +228,87 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Widget _buildItemForm(StateSetter setSheetState, {bool isEdit = false}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+
+        _buildSectionLabel("Item Name *"),
+        _buildTextField(
+            _nameController, 
+            "e.g. Hiking Boots",
+            validator: (value) =>
+                _requiredField(value, 'Item name is required.'),
+          ),
+        
+
+        _buildSectionLabel("Location *"),
+        _buildLocationDropdown(
+          setSheetState,
+          validator: (value) =>
+                _requiredField(value, 'Storate Location is required.'),
+        ),
+
+        _buildSectionLabel("Quantity *"),
+        _buildTextField(
+          _qtyController, 
+          "Qty", 
+          isNum: true,
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Quantity is required';
+            if (int.tryParse(value) == null) return 'Enter a whole number';
+            return null;
+          },
+        ),
+
+        _buildSectionLabel("Item Category *"),
+        Center(
+          child: ToggleButtons(
+            borderRadius: BorderRadius.circular(15),
+            selectedColor: Colors.white,
+            fillColor: cPrimary,
+            isSelected: [_selectedType == "Reusable", _selectedType == "Disposable"],
+            onPressed: (index) {
+              setSheetState(() {
+                _selectedType = (index == 0) ? "Reusable" : "Disposable";
+              });
+            },
+            constraints: const BoxConstraints(minHeight: 45, minWidth: 130),
+            children: const [
+              Text("Reusable", style: TextStyle(fontWeight: FontWeight.bold)),
+              Text("Disposable", style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+
+        _buildSectionLabel("Item Image"),
+        InkWell(
+          onTap: () => _pickImage(setSheetState),
+          child: Container(
+            width: double.infinity,
+            height: 120,
+            decoration: BoxDecoration(
+              color: cBackground,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: _webImage == null
+                ? const Icon(Icons.add_a_photo_outlined, color: cPrimary, size: 32)
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.memory(_webImage!, fit: BoxFit.cover),
+                  ),
+          ),
+        ),
+
+        _buildSectionLabel("Link & Comments"),
+        _buildTextField(_linkController, "URL Link (Optional)"),
+        const SizedBox(height: 12),
+        _buildTextField(_commentController, "Notes...", maxLines: 3),
+      ],
+    );
+  }
+
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -291,175 +339,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
-  void _showEditItemSheet(InventoryItem item, int index) {
-    // Pre-fill controllers with current item data
-    _nameController.text = item.name;
-    _locationController.text = item.location;
-    _selectedType = item.type;
-    _qtyController.text = item.quantity ?? "";
-    _linkController.text = item.link ?? "";
-    _commentController.text = item.comment ?? "";
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-          ),
-          padding: EdgeInsets.only(
-            top: 20,
-            left: 24,
-            right: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Edit ${item.name}",
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                _buildSectionLabel("Item Name *"),
-                _buildTextField(_nameController, "Name"),
-
-                _buildSectionLabel("Location *"),
-                _buildTextField(_locationController, "Location"),
-
-                _buildSectionLabel("Type & Quantity"),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _selectedType == "Reusable",
-                      onChanged: (val) {
-                        if (val == true)
-                          setSheetState(() => _selectedType = "Reusable");
-                      },
-                    ),
-                    const Text("Reusable"),
-                    const SizedBox(width: 8),
-                    Checkbox(
-                      value: _selectedType == "Disposable",
-                      onChanged: (val) {
-                        if (val == true)
-                          setSheetState(() => _selectedType = "Disposable");
-                      },
-                    ),
-                    const Text("Disposable"),
-                    if (_selectedType == "Disposable" ||
-                        _selectedType == "Reusable") ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          _qtyController,
-                          "Qty",
-                          isNum: true,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-
-                _buildSectionLabel("Link & Comments"),
-                _buildTextField(_linkController, "URL Link"),
-                const SizedBox(height: 12),
-                _buildTextField(_commentController, "Notes...", maxLines: 3),
-
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  height: 60,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: cPrimary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        // Update the item in the list
-                        _inventory[index] = InventoryItem(
-                          name: _nameController.text,
-                          location: _locationController.text,
-                          type: _selectedType,
-                          quantity: _selectedType == "Disposable"
-                              ? _qtyController.text
-                              : null,
-                          link: _linkController.text,
-                          comment: _commentController.text,
-                          borrower:
-                              item.borrower, // Preserve the borrower status
-                        );
-                      });
-                      // Clear and close
-                      _nameController.clear();
-                      _locationController.clear();
-                      Navigator.pop(context); // Close Edit Sheet
-                    },
-                    child: const Text(
-                      "Save Changes",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-  //! FROM MIA BRANCH OLD CODE
-  // Small helper for the buttons
-  // Widget _btn(String label, Color col, VoidCallback tap) => SizedBox(
-  //   width: double.infinity, height: 55,
-  //   child: ElevatedButton(
-  //     style: ElevatedButton.styleFrom(backgroundColor: col, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-  //     onPressed: tap, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-  //   ),
-  // );
-
-  // // --- STAT BOX COMPONENT ---
-  // Widget _buildStatBox(String title, String value, Color bgColor, Color textColor) {
-  //   return Expanded(
-  //     child: Container(
-  //       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-  //       decoration: BoxDecoration(
-  //         color: bgColor,
-  //         borderRadius: BorderRadius.circular(28),
-  //         boxShadow: [
-  //           BoxShadow(
-  //             color: bgColor.withOpacity(0.3),
-  //             blurRadius: 12,
-  //             offset: const Offset(0, 5),
-  //           )
-  //         ],
-  //       ),
-  //       child: Column(
-  //         children: [
-  //           Text(title, style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w600)),
-  //           const SizedBox(height: 4),
-  //           Text(value, style: TextStyle(color: textColor, fontSize: 32, fontWeight: FontWeight.bold)),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
 
   void _showCheckoutDialog(InventoryItem item) {
     _resetCheckoutFields();
@@ -716,11 +595,25 @@ class _HomePageState extends State<HomePage> {
           ElevatedButton(
             onPressed: () {
               final newLocation = newLocationController.text.trim();
-              if (newLocation.isNotEmpty && !_locations.contains(newLocation)) {
+              
+              if (newLocation.isNotEmpty) {
+                // ignore case
+                final bool exists = _locations.any(
+                  (loc) => loc.toLowerCase() == newLocation.toLowerCase(),
+                );
+
                 setSheetState(() {
-                  _locations.add(newLocation);
-                  _selectedLocation = newLocation;
+                  if (!exists) {
+                    _locations.add(newLocation);
+                    _selectedLocation = newLocation;
+                  } else {
+                    final existingLocation = _locations.firstWhere(
+                      (loc) => loc.toLowerCase() == newLocation.toLowerCase(),
+                    );
+                    _selectedLocation = existingLocation;
+                  }
                 });
+                
                 Navigator.pop(context);
               }
             },
@@ -939,171 +832,180 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showAddItemSheet() {
-    _selectedLocation = null;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
+    _formKey.currentState?.reset();
+      // Reset for new entry
+      _nameController.clear();
+      _qtyController.clear();
+      _linkController.clear();
+      _commentController.clear();
+      _selectedLocation = null;
+      _selectedType = "Reusable";
+      _webImage = null;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setSheetState) => Form( // <--- ADD THIS
+          key: _formKey, // <--- ADD THIS
+            child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
               ),
               padding: EdgeInsets.only(
-                top: 20,
-                left: 24,
-                right: 24,
+                top: 20, left: 24, right: 24,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
-              child: Form(
-                key: _formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.grey,
-                              size: 30,
-                            ),
-                          ),
-                          const Text(
-                            "Add New Item",
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 48),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _buildSectionLabel("Item Name *"),
-                      _buildTextField(_nameController, "e.g. Hiking Boots"),
-                      _buildSectionLabel("Location *"),
-                      _buildLocationDropdown(setSheetState),
-                      _buildSectionLabel("Quantity *"),
-                      _buildTextField(_qtyController, "Qty", isNum: true),
-                      _buildSectionLabel("Type *"),
-                      Row(
-                        children: [
-                          ReusableCheckbox(
-                            value: _selectedType == "Reusable",
-                            label: "Reusable",
-                            onChanged: (val) {
-                              setSheetState(() {
-                                _selectedType = (val ?? false)
-                                    ? "Reusable"
-                                    : "Disposable";
-                              });
-                            },
-                            enabledMessage:
-                                "(borrowing system enabled for this item)",
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                      ),
-                      _buildSectionLabel("Item Image"),
-                      InkWell(
-                        onTap: () => _pickImage(setSheetState),
-                        child: Container(
-                          width: double.infinity,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: cBackground,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: _webImage == null
-                              ? const Icon(
-                                  Icons.add_a_photo_outlined,
-                                  color: cPrimary,
-                                  size: 32,
-                                )
-                              : Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Image.memory(
-                                        _webImage!,
-                                        width: double.infinity,
-                                        height: 120,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 8,
-                                      bottom: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.black54,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.edit,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Add New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    
+                    _buildItemForm(setSheetState),
+
+                    const SizedBox(height: 30),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 60,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: cPrimary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         ),
+
+                        onPressed: () {
+                          // 1. Trigger the red error messages and the scroll-to-error logic
+                          if (_formKey.currentState!.validate()) {
+                            // SUCCESS: This only runs if EVERY field passed its validator
+                            setState(() {
+                              _inventory.add(InventoryItem(
+                                name: _nameController.text.trim(),
+                                location: _selectedLocation!,
+                                type: _selectedType,
+                                imageBytes: _webImage,
+                                // Since you want Quantity to always show, we save it regardless of type
+                                quantity: _qtyController.text.isNotEmpty ? _qtyController.text : "0",
+                                link: _linkController.text,
+                                comment: _commentController.text,
+                              ));
+                            });
+                            
+                            // Clear and close
+                            _nameController.clear();
+                            _qtyController.clear();
+                            _selectedLocation = null;
+                            _webImage = null;
+                            
+                            Navigator.pop(context);
+                          } else {
+                            // FAIL: The form is now red. Let's make sure they see the error.
+                            // This scrolls the list to the first field that has a red error.
+                            Scrollable.ensureVisible(
+                              _formKey.currentContext!,
+                              alignment: 0.5, 
+                              duration: const Duration(milliseconds: 300),
+                            );
+                          }
+                        },
+                        child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
-                      _buildSectionLabel("Link & Comments"),
-                      _buildTextField(_linkController, "URL Link (Optional)"),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        _commentController,
-                        "Notes...",
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 30),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 60,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: cPrimary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              _saveItem(setSheetState);
-                            }
-                          },
-                          child: const Text(
-                            "Add to Inventory",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
+        ),
+      );
+    }
+
+  void _showEditItemSheet(InventoryItem item, int index) {
+    _formKey.currentState?.reset();
+    // Populate data
+    _nameController.text = item.name;
+    _selectedLocation = item.location;
+    _selectedType = item.type;
+    _qtyController.text = item.quantity ?? "";
+    _linkController.text = item.link ?? "";
+    _commentController.text = item.comment ?? "";
+    _webImage = item.imageBytes;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Form( // <--- MUST ADD THIS
+          key: _formKey, // <--- MUST ADD THIS
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+            ),
+            padding: EdgeInsets.only(
+              top: 20, left: 24, right: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("Edit ${item.name}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  
+                  _buildItemForm(setSheetState),
+
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cPrimary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          setState(() {
+                            _inventory[index] = InventoryItem(
+                              name: _nameController.text.trim(),
+                              location: _selectedLocation ?? item.location,
+                              type: _selectedType,
+                              imageBytes: _webImage,
+                              quantity: _qtyController.text, // Always save if you want it to show
+                              link: _linkController.text,
+                              comment: _commentController.text,
+                              borrower: item.borrower,
+                            );
+                          });
+                          Navigator.pop(context);
+                        } else {
+                          // This snaps the view to the top-most error
+                          Scrollable.ensureVisible(
+                            _formKey.currentContext!,
+                            alignment: 0.5,
+                            duration: const Duration(milliseconds: 300),
+                          );
+                        }
+                      },
+                      child: const Text("Save Changes", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
-
+  
   void _saveItem(void Function(void Function()) setSheetState) {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1429,21 +1331,31 @@ class _HomePageState extends State<HomePage> {
           borderSide: const BorderSide(color: cHighlight, width: 1.2),
         ),
       ),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
     );
   }
 
-  Widget _buildLocationDropdown(void Function(void Function()) setSheetState) {
+Widget _buildLocationDropdown(
+    void Function(void Function()) setSheetState, {
+    String? Function(String?)? validator, // Add this optional parameter
+  }) {
     final List<String> dropdownItems = [..._locations, "Add New Location"];
 
     return DropdownButtonFormField<String>(
       value: _locations.contains(_selectedLocation) ? _selectedLocation : null,
       hint: const Text("Select or add location"),
+      validator: validator, // Use the passed-in validator here
       decoration: InputDecoration(
         filled: true,
         fillColor: cBackground,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
+        ),
+        // Adding error borders so the dropdown turns red like the text fields
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: cHighlight),
         ),
       ),
       items: dropdownItems.map((location) {
@@ -1467,10 +1379,6 @@ class _HomePageState extends State<HomePage> {
           setSheetState(() => _selectedLocation = value);
         }
       },
-      validator: (value) {
-        if (value == null || value.isEmpty) return 'Please select a location';
-        return null;
-      },
     );
-  }
+  }  
 }
