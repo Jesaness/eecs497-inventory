@@ -137,6 +137,8 @@ class _HomePageState extends State<HomePage> {
   String _selectedType = 'Reusable';
   DateTimeRange? _checkoutRange;
 
+  String _filterMode = "All"; // Options: "All", "Storage", "CheckedOut"
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -236,13 +238,21 @@ class _HomePageState extends State<HomePage> {
   String _searchQuery = '';
 
   List<InventoryItem> get _filteredInventory {
-    if (_searchQuery.isEmpty) return _inventory;
-    final q = _searchQuery.toLowerCase();
-    return _inventory.where((item) {
-      return item.name.toLowerCase().contains(q) ||
-          item.location.toLowerCase().contains(q) ||
-          item.type.toLowerCase().contains(q) ||
-          (item.borrower?.name.toLowerCase().contains(q) ?? false);
+    // First, filter by the Button Category
+    List<InventoryItem> categoryList = _inventory.where((item) {
+      if (_filterMode == "Storage") return item.borrower == null;
+      if (_filterMode == "CheckedOut") return item.borrower != null;
+      return true; // "All" mode
+    }).toList();
+
+    // Then, apply the Search Query if there is one
+    if (_searchQuery.isEmpty) return categoryList;
+    
+    return categoryList.where((item) {
+      final query = _searchQuery.toLowerCase();
+      return item.name.toLowerCase().contains(query) ||
+            item.location.toLowerCase().contains(query) ||
+            (item.borrower?.name.toLowerCase().contains(query) ?? false);
     }).toList();
   }
 
@@ -1166,105 +1176,323 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // @override
+  // Widget build(BuildContext context) {
+  //   final filtered = _filteredInventory;
+
+  //   return Scaffold(
+  //     appBar: AppBar(
+  //       title: const Text(
+  //         'My Inventory',
+  //         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+  //       ),
+  //       centerTitle: true,
+  //       backgroundColor: cBackground,
+  //       elevation: 0,
+  //     ),
+  //     body: Padding(
+  //       padding: const EdgeInsets.symmetric(horizontal: 20),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           // --- SEARCH BAR ---
+  //           Container(
+  //             decoration: BoxDecoration(
+  //               color: Colors.white,
+  //               borderRadius: BorderRadius.circular(20),
+  //               boxShadow: [
+  //                 BoxShadow(
+  //                   color: Colors.black.withOpacity(0.05),
+  //                   blurRadius: 10,
+  //                   offset: const Offset(0, 4),
+  //                 ),
+  //               ],
+  //             ),
+  //             child: TextField(
+  //               controller: _searchController,
+  //               decoration: InputDecoration(
+  //                 hintText: "Search by name, location, borrower...",
+  //                 hintStyle: TextStyle(
+  //                   color: Colors.grey.shade400,
+  //                   fontSize: 15,
+  //                 ),
+  //                 prefixIcon: const Icon(Icons.search_rounded, color: cPrimary),
+  //                 suffixIcon: _searchQuery.isNotEmpty
+  //                     ? IconButton(
+  //                         icon: Icon(
+  //                           Icons.close_rounded,
+  //                           color: Colors.grey.shade400,
+  //                         ),
+  //                         onPressed: () => _searchController.clear(),
+  //                       )
+  //                     : null,
+  //                 filled: true,
+  //                 fillColor: Colors.white,
+  //                 border: OutlineInputBorder(
+  //                   borderRadius: BorderRadius.circular(20),
+  //                   borderSide: BorderSide.none,
+  //                 ),
+  //                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
+  //               ),
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+
+  //           // --- STAT BOXES ---
+  //           Row(
+  //             children: [
+  //               _buildStatBox(
+  //                 "Total Items",
+  //                 _inventory.length.toString(),
+  //                 cPrimary,
+  //                 Colors.white,
+  //               ),
+  //               const SizedBox(width: 16),
+  //               _buildStatBox(
+  //                 "Checked Out",
+  //                 _inventory.where((i) => i.borrower != null).length.toString(),
+  //                 cSecondary,
+  //                 cPrimary,
+  //               ),
+  //             ],
+  //           ),
+  //           const SizedBox(height: 32),
+
+  //           // --- SECTION TITLE ---
+  //           Row(
+  //             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //             children: [
+  //               const Text(
+  //                 "Current Stock",
+  //                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+  //               ),
+  //               if (_searchQuery.isNotEmpty)
+  //                 Text(
+  //                   "${filtered.length} result${filtered.length == 1 ? '' : 's'}",
+  //                   style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+  //                 ),
+  //             ],
+  //           ),
+  //           const SizedBox(height: 16),
+
+  //           Expanded(
+  //             child: filtered.isEmpty
+  //                 ? Center(
+  //                     child: Text(
+  //                       _searchQuery.isNotEmpty
+  //                           ? "No items match \"$_searchQuery\""
+  //                           : "Empty. Let's add something!",
+  //                       style: TextStyle(
+  //                         color: Colors.grey.shade400,
+  //                         fontSize: 16,
+  //                       ),
+  //                     ),
+  //                   )
+  //                 : GridView.builder(
+  //                     gridDelegate:
+  //                         const SliverGridDelegateWithMaxCrossAxisExtent(
+  //                           maxCrossAxisExtent: 220,
+  //                           crossAxisSpacing: 16,
+  //                           mainAxisSpacing: 16,
+  //                           childAspectRatio: 0.85,
+  //                         ),
+  //                     itemCount: filtered.length,
+  //                     itemBuilder: (context, index) {
+  //                       final item = filtered[index];
+  //                       final int realIndex = _inventory.indexOf(item);
+  //                       final bool isBorrowed = item.borrower != null;
+
+  //                       return InkWell(
+  //                         onTap: () => _viewItemDetails(item, realIndex),
+  //                         borderRadius: BorderRadius.circular(28),
+  //                         child: Container(
+  //                           decoration: BoxDecoration(
+  //                             color: Colors.white,
+  //                             borderRadius: BorderRadius.circular(28),
+  //                             border: isBorrowed
+  //                                 ? Border.all(color: cAccent, width: 2)
+  //                                 : null,
+  //                             boxShadow: [
+  //                               BoxShadow(
+  //                                 color: Colors.black.withOpacity(0.04),
+  //                                 blurRadius: 10,
+  //                                 offset: const Offset(0, 4),
+  //                               ),
+  //                             ],
+  //                           ),
+  //                           padding: const EdgeInsets.all(16),
+  //                           child: Column(
+  //                             crossAxisAlignment: CrossAxisAlignment.start,
+  //                             children: [
+  //                               Expanded(
+  //                                 child: Container(
+  //                                   width: double.infinity,
+  //                                   decoration: BoxDecoration(
+  //                                     color: cBackground,
+  //                                     borderRadius: BorderRadius.circular(15),
+  //                                   ),
+  //                                   child: item.imageBytes != null
+  //                                       ? ClipRRect(
+  //                                           borderRadius: BorderRadius.circular(
+  //                                             15,
+  //                                           ),
+  //                                           child: Image.memory(
+  //                                             item.imageBytes!,
+  //                                             fit: BoxFit.cover,
+  //                                           ),
+  //                                         )
+  //                                       : Icon(
+  //                                           isBorrowed
+  //                                               ? Icons.outbox_rounded
+  //                                               : Icons.inventory_2_outlined,
+  //                                           color: isBorrowed
+  //                                               ? cAccent
+  //                                               : cPrimary.withOpacity(0.4),
+  //                                         ),
+  //                                 ),
+  //                               ),
+  //                               const SizedBox(height: 8),
+  //                               Text(
+  //                                 item.name,
+  //                                 style: const TextStyle(
+  //                                   fontSize: 20,
+  //                                   fontWeight: FontWeight.bold,
+  //                                 ),
+  //                                 maxLines: 1,
+  //                               ),
+  //                               Text(
+  //                                 isBorrowed
+  //                                     ? "With: ${item.borrower!.name}"
+  //                                     : item.location,
+  //                                 style: TextStyle(
+  //                                   fontSize: 14,
+  //                                   color: isBorrowed
+  //                                       ? cHighlight
+  //                                       : Colors.grey.shade600,
+  //                                   fontWeight: isBorrowed
+  //                                       ? FontWeight.bold
+  //                                       : FontWeight.normal,
+  //                                 ),
+  //                               ),
+  //                               const SizedBox(height: 10),
+  //                               Container(
+  //                                 padding: const EdgeInsets.symmetric(
+  //                                   horizontal: 10,
+  //                                   vertical: 4,
+  //                                 ),
+  //                                 decoration: BoxDecoration(
+  //                                   color: isBorrowed
+  //                                       ? cAccent.withOpacity(0.2)
+  //                                       : (item.type == "Disposable"
+  //                                             ? Colors.orange.withOpacity(0.1)
+  //                                             : cSecondary.withOpacity(0.4)),
+  //                                   borderRadius: BorderRadius.circular(10),
+  //                                 ),
+  //                                 child: Text(
+  //                                   isBorrowed
+  //                                       ? "Checked Out"
+  //                                       : "Qty: ${item.quantity}",
+  //                                   style: const TextStyle(
+  //                                     fontSize: 12,
+  //                                     fontWeight: FontWeight.bold,
+  //                                   ),
+  //                                 ),
+  //                               ),
+  //                             ],
+  //                           ),
+  //                         ),
+  //                       );
+  //                     },
+  //                   ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //     floatingActionButton: FloatingActionButton.large(
+  //       onPressed: _showAddItemSheet,
+  //       backgroundColor: cHighlight,
+  //       foregroundColor: Colors.white,
+  //       child: const Icon(Icons.add_rounded, size: 40),
+  //     ),
+  //   );
+  // }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            _searchQuery.isNotEmpty
+                ? "No items match \"$_searchQuery\""
+                : "Your inventory is empty!",
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFAB() {
+    return FloatingActionButton.large(
+      onPressed: _showAddItemSheet,
+      backgroundColor: cHighlight,
+      foregroundColor: Colors.white,
+      child: const Icon(Icons.add_rounded, size: 40),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredInventory;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'My Inventory',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
-        ),
-        centerTitle: true,
-        backgroundColor: cBackground,
-        elevation: 0,
-      ),
+      appBar: AppBar( /* ... same as your code ... */ ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // --- SEARCH BAR ---
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: "Search by name, location, borrower...",
-                  hintStyle: TextStyle(
-                    color: Colors.grey.shade400,
-                    fontSize: 15,
-                  ),
-                  prefixIcon: const Icon(Icons.search_rounded, color: cPrimary),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: Colors.grey.shade400,
-                          ),
-                          onPressed: () => _searchController.clear(),
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
+            
             const SizedBox(height: 16),
 
-            // --- STAT BOXES ---
-            Row(
-              children: [
-                _buildStatBox(
-                  "Total Items",
-                  _inventory.length.toString(),
-                  cPrimary,
-                  Colors.white,
-                ),
-                const SizedBox(width: 16),
-                _buildStatBox(
-                  "Checked Out",
-                  _inventory.where((i) => i.borrower != null).length.toString(),
-                  cSecondary,
-                  cPrimary,
-                ),
-              ],
+            // --- FILTER BUTTONS ---
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _filterBtn("All", Icons.inventory_2_rounded, "All"),
+                  const SizedBox(width: 8),
+                  _filterBtn("In Storage", Icons.archive_rounded, "Storage"),
+                  const SizedBox(width: 8),
+                  _filterBtn("Checked Out", Icons.outbox_rounded, "CheckedOut"),
+                ],
+              ),
             ),
-            const SizedBox(height: 32),
 
+            const SizedBox(height: 24),
+            
             // --- SECTION TITLE ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Current Stock",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                Text(
+                  _filterMode == "All" ? "Current Stock" : (_filterMode == "Storage" ? "In Storage" : "Borrowed Items"),
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
-                if (_searchQuery.isNotEmpty)
-                  Text(
-                    "${filtered.length} result${filtered.length == 1 ? '' : 's'}",
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                  ),
+                Text(
+                  "${filtered.length} items",
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                ),
               ],
             ),
+            
             const SizedBox(height: 16),
 
+            // --- GRIDVIEW (Keep your existing GridView.builder here) ---
             Expanded(
               child: filtered.isEmpty
                   ? Center(
@@ -1398,11 +1626,43 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.large(
-        onPressed: _showAddItemSheet,
-        backgroundColor: cHighlight,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_rounded, size: 40),
+      floatingActionButton: _buildFAB(),
+    );
+  }
+
+  // Helper for the Filter Buttons
+  Widget _filterBtn(String label, IconData icon, String mode) {
+    bool isSelected = _filterMode == mode;
+    return GestureDetector(
+      onTap: () => setState(() => _filterMode = mode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? cPrimary : Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            )
+          ],
+          border: isSelected ? null : Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: isSelected ? Colors.white : cPrimary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.black87,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
