@@ -925,61 +925,101 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _showAddItemSheet() {
+ void _showAddItemSheet() {
     _formKey.currentState?.reset();
-      // Reset for new entry
-      _nameController.clear();
-      _qtyController.clear();
-      _linkController.clear();
-      _commentController.clear();
-      _selectedLocation = null;
-      _selectedType = "Disposable";
-      _webImage = null;
+    // Reset for new entry
+    _nameController.clear();
+    _qtyController.clear();
+    _linkController.clear();
+    _commentController.clear();
+    _selectedLocation = null;
+    _selectedType = "Disposable";
+    _webImage = null;
 
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setSheetState) => Form( // <--- ADD THIS
-          key: _formKey, // <--- ADD THIS
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-              ),
-              padding: EdgeInsets.only(
-                top: 20, left: 24, right: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text("Add New Item", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    
-                    _buildItemForm(setSheetState),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Form(
+          key: _formKey,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+            ),
+            padding: EdgeInsets.only(
+              top: 20,
+              left: 24,
+              right: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Add New Item",
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  
+                  _buildItemForm(setSheetState),
+                  
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cPrimary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                      ),
+                      onPressed: () {
+                        // 1. Trigger the red error messages and the scroll-to-error logic
+                        if (_formKey.currentState!.validate()) {
+                          // Quick safety check for location
+                          if (_selectedLocation == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Please select a location')),
+                            );
+                            return;
+                          }
 
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 60,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: cPrimary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        ),
+                          final String inputName = _nameController.text.trim();
+                          final String inputLocation = _selectedLocation!;
+                          final int inputQty = int.tryParse(_qtyController.text) ?? 0;
 
-                        onPressed: () {
-                          // 1. Trigger the red error messages and the scroll-to-error logic
-                          if (_formKey.currentState!.validate()) {
-                            // SUCCESS: This only runs if EVERY field passed its validator
-                            setState(() {
+                          // SUCCESS: This only runs if EVERY field passed its validator
+                          setState(() {
+                            // Check for duplicates based on name and location (case-insensitive)
+                            final int existingIndex = _inventory.indexWhere((item) =>
+                                item.name.toLowerCase() == inputName.toLowerCase() &&
+                                item.location.toLowerCase() == inputLocation.toLowerCase());
+
+                            if (existingIndex != -1) {
+                              // MERGE: Update the existing item's quantity
+                              final existingItem = _inventory[existingIndex];
+                              final int currentQty = int.tryParse(existingItem.quantity ?? '0') ?? 0;
+                              final int updatedQty = currentQty + inputQty;
+
+                              _inventory[existingIndex] = InventoryItem(
+                                name: existingItem.name,
+                                location: existingItem.location,
+                                type: existingItem.type,
+                                quantity: updatedQty.toString(),
+                                imageBytes: _webImage ?? existingItem.imageBytes,
+                                link: _linkController.text.isNotEmpty ? _linkController.text : existingItem.link,
+                                comment: _commentController.text.isNotEmpty ? _commentController.text : existingItem.comment,
+                                imagePath: existingItem.imagePath,
+                                borrower: existingItem.borrower,
+                              );
+                            } else {
+                              // NEW: Add a brand new item to the inventory
                               _inventory.add(InventoryItem(
-                                name: _nameController.text.trim(),
-                                location: _selectedLocation!,
+                                name: inputName,
+                                location: inputLocation,
                                 type: _selectedType,
                                 imageBytes: _webImage,
                                 // Since you want Quantity to always show, we save it regardless of type
@@ -987,36 +1027,39 @@ class _HomePageState extends State<HomePage> {
                                 link: _linkController.text,
                                 comment: _commentController.text,
                               ));
-                            });
-                            
-                            // Clear and close
-                            _nameController.clear();
-                            _qtyController.clear();
-                            _selectedLocation = null;
-                            _webImage = null;
-                            
-                            Navigator.pop(context);
-                          } else {
-                            // FAIL: The form is now red. Let's make sure they see the error.
-                            // This scrolls the list to the first field that has a red error.
-                            Scrollable.ensureVisible(
-                              _formKey.currentContext!,
-                              alignment: 0.5, 
-                              duration: const Duration(milliseconds: 300),
-                            );
-                          }
-                        },
-                        child: const Text("Add to Inventory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      ),
+                            }
+                          });
+
+                          // Clear and close
+                          _nameController.clear();
+                          _qtyController.clear();
+                          _selectedLocation = null;
+                          _webImage = null;
+
+                          Navigator.pop(context);
+                        } else {
+                          // FAIL: The form is now red. Let's make sure they see the error.
+                          // This scrolls the list to the first field that has a red error.
+                          Scrollable.ensureVisible(
+                            _formKey.currentContext!,
+                            alignment: 0.5,
+                            duration: const Duration(milliseconds: 300),
+                          );
+                        }
+                      },
+                      child: const Text("Add to Inventory",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
   void _showEditItemSheet(InventoryItem item, int index) {
     _formKey.currentState?.reset();
