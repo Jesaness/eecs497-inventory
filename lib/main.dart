@@ -1406,7 +1406,15 @@ class _HomePageState extends State<HomePage> {
     final filtered = _filteredInventory;
 
     return Scaffold(
-      appBar: AppBar( /* ... same as your code ... */ ),
+      appBar: AppBar(
+        title: const Text(
+          'My Inventory',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+        ),
+        centerTitle: true,
+        backgroundColor: cBackground,
+        elevation: 0,
+      ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
@@ -1414,7 +1422,48 @@ class _HomePageState extends State<HomePage> {
           children: [
             // --- SEARCH BAR ---
             
-            const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: "Search by name, location, borrower...",
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 15,
+                    ),
+                    prefixIcon: const Icon(Icons.search_rounded, color: cPrimary),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: Colors.grey.shade400,
+                            ),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 24),
 
             // --- FILTER BUTTONS ---
             SingleChildScrollView(
@@ -1594,28 +1643,37 @@ class _HomePageState extends State<HomePage> {
       onTap: () => setState(() => _filterMode = mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        // INCREASED: Vertical padding (12 -> 16) and Horizontal (16 -> 20)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
           color: isSelected ? cPrimary : Colors.white,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(20), // Slightly rounder for the larger size
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             )
           ],
           border: isSelected ? null : Border.all(color: Colors.grey.shade200),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 18, color: isSelected ? Colors.white : cPrimary),
-            const SizedBox(width: 8),
+            // INCREASED: Icon size (18 -> 24)
+            Icon(
+              icon, 
+              size: 28, 
+              color: isSelected ? Colors.white : cPrimary
+            ),
+            const SizedBox(width: 12), // Added more gap between icon and text
+            // INCREASED: Text size (Default -> 16)
             Text(
               label,
               style: TextStyle(
+                fontSize: 20,
                 color: isSelected ? Colors.white : Colors.black87,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ],
